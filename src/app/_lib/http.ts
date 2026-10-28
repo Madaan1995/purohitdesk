@@ -64,3 +64,18 @@ export function readCookie(req: Request, name: string): string | null {
   }
   return null;
 }
+
+/** If-Match: "<version>" → version. Required on updates of versioned resources (spec §05 §10). */
+export function parseIfMatch(req: Request): number {
+  const header = req.headers.get('if-match');
+  if (header === null) {
+    throw new DomainError(apiError('VALIDATION_FAILED', { reason: 'IF_MATCH_REQUIRED', details: { field: 'If-Match' } }));
+  }
+  const match = /^(?:W\/)?"(\d{1,9})"$/.exec(header.trim());
+  if (!match) throw new DomainError(apiError('VALIDATION_FAILED', { details: { field: 'If-Match' } }));
+  return Number(match[1]);
+}
+
+export function etag(version: number): Record<string, string> {
+  return { ETag: `"${version}"` };
+}
