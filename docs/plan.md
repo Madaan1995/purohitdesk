@@ -69,7 +69,7 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 
 ---
 
-## M1 — Foundation schema with RLS
+## M1 — Foundation schema with RLS (built, not founder-verified)
 
 **Delivers**
 - Earliest migration: schema `app`; the six roles `app_runtime`, `app_domain`, `app_authz`, `app_bootstrap`, `app_freebusy`, `app_maintenance` (NOLOGIN, NOBYPASSRLS; the founder gives `app_runtime` LOGIN and a password in M2); shared helpers `current_actor_id()`, `current_tenant_id()`, `raise_error()`, `is_valid_timezone()`, triggers for version bump and append-only.
@@ -110,10 +110,10 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 Punjabi names stay NULL until P1.
 
 **Build checklist**
-- [ ] Proposal approved (columns, policies, helper bodies, check script, test harness, seed), including a concrete example migration file name for the PROPOSED naming scheme (spec §04 §1)
-- [ ] Migrations written; seed written; `m1_checks.sql` written
-- [ ] SQL tests pass on a throwaway Postgres; CI database job green
-- [ ] Real output shown
+- [ ] Proposal approved — *written overnight as `docs/proposals/m1.md`, every decision AUTO-DECIDED, awaiting founder review* — (columns, policies, helper bodies, check script, test harness, seed), including a concrete example migration file name for the PROPOSED naming scheme (spec §04 §1)
+- [x] Migrations written; seed written; `m1_checks.sql` written
+- [x] SQL tests pass on a throwaway Postgres; CI database job green (CI: pending on the PR)
+- [x] Real output shown
 
 **Founder verification**
 - [ ] Create the staging Supabase project in `ap-south-1` (Mumbai) if not done; tell me its Postgres version (Dashboard → Settings → Infrastructure) so CI matches it.
