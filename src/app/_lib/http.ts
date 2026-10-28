@@ -55,3 +55,12 @@ export async function parseBody<T extends z.ZodType>(req: Request, schema: T): P
   }
   return schema.parse(raw);
 }
+
+/** Reads one cookie from the request's Cookie header. */
+export function readCookie(req: Request, name: string): string | null {
+  for (const part of (req.headers.get('cookie') ?? '').split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name) return decodeURIComponent(rest.join('='));
+  }
+  return null;
+}
