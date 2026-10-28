@@ -210,7 +210,9 @@ Punjabi names stay NULL until P1.
 
 ---
 
-## M5 — Catalog and settings (T-11)
+## M5 — Catalog and settings (T-11) (built, not founder-verified)
+
+*Status: built overnight on branch `m5-catalog-settings`; proposal `docs/proposals/m5.md` (every decision AUTO-DECIDED, awaiting founder review). Migration, `m5_checks.sql`, SQL tests, API, OpenAPI, pages and tests done; real output in the PR.*
 
 **Delivers:** `save_offering`, `save_samagri_template`, `update_organization`, `update_priest_settings`, audit writing; `GET/POST/PATCH /offerings`, `GET/POST/PUT /samagri-templates`, `PATCH /organization`, `PATCH /priests/{id}`; screens to add/edit offerings (duration, suggested dakshina), edit samagri templates (FAMILY/PRIEST items, order), practice settings, default travel buffers.
 **Tables:** new `samagri_templates`, `samagri_template_items`, `audit_log`.
