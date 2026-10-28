@@ -7,13 +7,13 @@ nearby, and tell me what you saw so I can fix this file.
 ## 1. First-time database setup (M1 + M2)
 
 1. Supabase dashboard → your staging project (region `ap-south-1`, Mumbai) → **SQL Editor**.
-2. Run each file in `supabase/migrations/` **in filename order**, one file per run, the whole file at once:
-   `20261028200000_m1_foundation.sql`, `20261028200100_m1_identity_tenancy.sql`,
-   `20261028210000_m2_auth_onboarding.sql`. If any statement fails (most likely a `CREATE ROLE`, `GRANT … TO
+2. Run each file in `supabase/migrations/` **in filename order**, one file per run, the whole file at once, and
+   only the ones not applied yet: M1 `20261028200000_m1_foundation.sql`, `20261028200100_m1_identity_tenancy.sql`;
+   M2 `20261028210000_m2_auth_onboarding.sql`; M4 `20261028220000_m4_customers.sql`. If any statement fails (most likely a `CREATE ROLE`, `GRANT … TO
    CURRENT_USER`, `ALTER FUNCTION … OWNER TO` or `GRANT … ON auth.users` — spec risk U1), stop and send me the exact
    error. Do not work around it with BYPASSRLS or the service-role key.
 3. Run `supabase/seed/ceremony_types.sql`.
-4. Run `supabase/checks/m1_checks.sql` and `supabase/checks/m2_checks.sql`. Every row must say `PASS`.
+4. Run every `supabase/checks/m<N>_checks.sql` for the milestones applied so far. Every row must say `PASS`.
 
 ## 2. Give `app_runtime` a login (M2)
 

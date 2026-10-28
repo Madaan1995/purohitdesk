@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: PurohitDesk API
-  version: 0.2.0
+  version: 0.4.0
   description: |
     Written per milestone (docs/plan.md). JSON, UTF-8, snake_case fields matching SQL columns.
     Every write calls exactly one PostgreSQL command (`x-db-function`); `x-permission` names the permission the
@@ -131,6 +131,112 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+  /customers:
+    get:
+      operationId: listCustomers
+      summary: Customers of the practice, keyset-paginated, optionally searched by name (word prefix) or phone
+      x-permission: CUSTOMER_READ
+      x-db-function: none (SELECT under RLS)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: q, in: query, schema: { type: string, maxLength: 60 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string }, description: opaque, from next_cursor }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, next_cursor]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Customer' }
+                  next_cursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createCustomer
+      summary: Add a customer (phone optional and not unique; duplicates are reported, not refused)
+      x-permission: CUSTOMER_WRITE
+      x-db-function: app.create_customer
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCustomerRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerCommandResult' }
+        '200':
+          description: Replay
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerCommandResult' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /customers/{customerId}:
+    parameters:
+      - { name: customerId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getCustomer
+      summary: One customer (erased customers answer 404)
+      x-permission: CUSTOMER_READ
+      x-db-function: none (SELECT under RLS)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      operationId: updateCustomer
+      summary: Change name, phone or address; null clears phone/address
+      x-permission: CUSTOMER_WRITE
+      x-db-function: app.update_customer
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCustomerRequest' }
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerCommandResult' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     bearer:
@@ -154,6 +260,12 @@ components:
       required: true
       description: 8–128 visible ASCII characters. Same key + same body replays the first result.
       schema: { type: string, minLength: 8, maxLength: 128 }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: '"<version>" from the ETag; a stale version answers 409 VERSION_CONFLICT with details.current_version'
+      schema: { type: string, pattern: '^"[0-9]+"$' }
   responses:
     Error:
       description: Error envelope
@@ -271,6 +383,51 @@ components:
         plan: { type: string, enum: [PILOT] }
         status: { type: string, enum: [ACTIVE, CLOSED] }
         version: { type: integer, minimum: 1 }
+    Customer:
+      type: object
+      additionalProperties: false
+      required: [id, display_name, phone_e164, address, acquisition_source, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string, maxLength: 120 }
+        phone_e164: { type: [string, 'null'], pattern: '^\+[1-9][0-9]{7,14}$' }
+        address: { type: [string, 'null'], maxLength: 500 }
+        acquisition_source: { type: string, enum: [PRIEST_DIRECT, IMPORT] }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CustomerCommandResult:
+      type: object
+      additionalProperties: false
+      required: [customer, possible_duplicates, idempotent_replay]
+      properties:
+        customer: { $ref: '#/components/schemas/Customer' }
+        possible_duplicates:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, display_name]
+            properties:
+              id: { type: string, format: uuid }
+              display_name: { type: string }
+        idempotent_replay: { type: boolean }
+    CreateCustomerRequest:
+      type: object
+      additionalProperties: false
+      required: [display_name]
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        phone: { type: [string, 'null'], maxLength: 32, description: 'Indian formats accepted; stored as E.164' }
+        address: { type: [string, 'null'], maxLength: 500 }
+    UpdateCustomerRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        phone: { type: [string, 'null'], maxLength: 32 }
+        address: { type: [string, 'null'], maxLength: 500 }
     ErrorEnvelope:
       type: object
       additionalProperties: false

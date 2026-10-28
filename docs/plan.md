@@ -192,7 +192,9 @@ Punjabi names stay NULL until P1.
 
 ---
 
-## M4 — Customers (T-08)
+## M4 — Customers (T-08) (built, not founder-verified)
+
+*Status: built overnight on branch `m4-customers`; proposal `docs/proposals/m4.md` (every decision AUTO-DECIDED, awaiting founder review). Migration, `m4_checks.sql`, SQL tests, API, OpenAPI, pages and tests done; real output in the PR.*
 
 **Delivers:** `create_customer`, `update_customer`; `GET/POST /customers`, `GET/PATCH /customers/{id}` with If-Match/ETag and keyset pagination; customer list with search by name prefix or phone, create/edit form, duplicate-phone warning (`possible_duplicates`); phone optional, shared household phones allowed.
 **Tables:** new `customers` (PROPOSED columns in the proposal; `acquisition_source` immutable).
