@@ -60,7 +60,7 @@ SELECT test.throws($$INSERT INTO app.role_permissions VALUES ('READ_ONLY', 'CUST
   'runtime cannot change the permission matrix');
 SELECT test.throws($$SELECT app.assert_permission('ORG_READ')$$, '42501', 'runtime cannot call assert_permission');
 SELECT test.throws($$SELECT app.current_priest_profile_id()$$, '42501', 'runtime cannot call current_priest_profile_id');
-SELECT test.throws($$SELECT app.current_member_has('ORG_READ')$$, '42501', 'runtime cannot call current_member_has');
+-- current_member_has became runtime-executable in M5 (its audit_log policy uses it); see 90_security_gates.sql.
 RESET ROLE;
 
 SET ROLE app_domain;
