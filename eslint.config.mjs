@@ -24,6 +24,20 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
+    // Only src/db may import the database driver (spec ADR-002).
+    files: ["src/**"],
+    ignores: ["src/db/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [{ name: "postgres", message: "Import the database only through src/db (withTenantTx)." }],
+          patterns: [{ group: ["postgres/*"], message: "Import the database only through src/db (withTenantTx)." }],
+        },
+      ],
+    },
+  },
+  {
     files: ["src/domain/**"],
     rules: {
       "no-restricted-imports": [
