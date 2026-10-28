@@ -27,3 +27,30 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  database:
+    name: SQL tests (throwaway Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Match the staging project's Postgres major version once the founder reports it (plan M1).
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Throwaway service container only; not a real credential.
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v7
+      - run: psql --version
+      - run: bash supabase/tests/run.sh
