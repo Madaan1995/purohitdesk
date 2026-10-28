@@ -1,0 +1,292 @@
+openapi: 3.1.0
+info:
+  title: PurohitDesk API
+  version: 0.2.0
+  description: |
+    Written per milestone (docs/plan.md). JSON, UTF-8, snake_case fields matching SQL columns.
+    Every write calls exactly one PostgreSQL command (`x-db-function`); `x-permission` names the permission the
+    database checks. Errors use the envelope in components.schemas.ErrorEnvelope (spec §11 §3).
+servers:
+  - url: /api/v1
+security:
+  - bearer: []
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Liveness and deployed commit
+      security: []
+      x-permission: none
+      x-db-function: none
+      responses:
+        '200':
+          description: OK (never cached)
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status, commit]
+                properties:
+                  status: { type: string, const: ok }
+                  commit: { type: string, description: 'git SHA, or "unknown" outside Vercel' }
+  /session:
+    get:
+      operationId: getSession
+      summary: The signed-in user and their active memberships; first call creates the app user
+      x-permission: authenticated
+      x-db-function: app.ensure_current_user
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Error' }
+  /me:
+    patch:
+      operationId: updateMyProfile
+      summary: Change own display name and/or language; also sets the NEXT_LOCALE cookie
+      x-permission: authenticated
+      x-db-function: app.update_my_profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMyProfileRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /onboarding/practice:
+    post:
+      operationId: createPractice
+      summary: Create a practice in one step (organization, OWNER membership, priest profile and link, offerings)
+      x-permission: authenticated (max 3 organizations per user)
+      x-db-function: app.bootstrap_practice
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePracticeRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatePracticeResult' }
+        '200':
+          description: Replay of an earlier request with the same Idempotency-Key and body
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatePracticeResult' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /ceremony-types:
+    get:
+      operationId: listCeremonyTypes
+      summary: The global ceremony catalog
+      x-permission: authenticated
+      x-db-function: none (SELECT under RLS)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/CeremonyType' }
+        '401': { $ref: '#/components/responses/Error' }
+  /organization:
+    get:
+      operationId: getOrganization
+      summary: The organization selected by X-Tenant-ID
+      x-permission: ORG_READ
+      x-db-function: none (SELECT under RLS)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag: { schema: { type: string }, description: '"<version>"' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Supabase access token, verified against the project's JWKS (asymmetric keys only), issuer
+        <SUPABASE_URL>/auth/v1, audience "authenticated". The PWA's own pages may instead send the httpOnly Supabase
+        session cookie.
+  parameters:
+    TenantId:
+      name: X-Tenant-ID
+      in: header
+      required: true
+      description: Organization id. A non-member gets 404, never 403.
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: 8–128 visible ASCII characters. Same key + same body replays the first result.
+      schema: { type: string, minLength: 8, maxLength: 128 }
+  responses:
+    Error:
+      description: Error envelope
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  schemas:
+    Locale:
+      type: string
+      enum: [hi, en]
+    Role:
+      type: string
+      enum: [OWNER, ADMIN, PRIEST, STAFF, READ_ONLY]
+    Permission:
+      type: string
+      enum: [ORG_READ, ORG_SETTINGS, MEMBER_MANAGE, AUDIT_READ, EXPORT_DATA, CUSTOMER_READ, CUSTOMER_WRITE,
+             CUSTOMER_ERASE, CATALOG_WRITE, BOOKING_READ, BOOKING_CREATE, BOOKING_EDIT, BOOKING_CONFIRM,
+             BOOKING_CONFIRM_OWN, BOOKING_CANCEL, BOOKING_CANCEL_OWN, BOOKING_COMPLETE, BOOKING_COMPLETE_OWN,
+             BLOCK_MANAGE, BLOCK_MANAGE_OWN, PAYMENT_RECORD, PAYMENT_REVERSE, SHARE_MESSAGE, VOICE_USE]
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, display_name, preferred_locale]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: [string, 'null'], maxLength: 120 }
+        preferred_locale: { $ref: '#/components/schemas/Locale' }
+    OrganizationSummary:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind, timezone]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 120 }
+        kind: { type: string, enum: [SOLO, COLLECTIVE] }
+        timezone: { type: string, description: IANA time zone }
+    Membership:
+      type: object
+      additionalProperties: false
+      required: [organization, role, permissions]
+      properties:
+        organization: { $ref: '#/components/schemas/OrganizationSummary' }
+        role: { $ref: '#/components/schemas/Role' }
+        permissions:
+          type: array
+          items: { $ref: '#/components/schemas/Permission' }
+    Session:
+      type: object
+      additionalProperties: false
+      required: [user, memberships]
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        memberships:
+          type: array
+          items: { $ref: '#/components/schemas/Membership' }
+    UpdateMyProfileRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        preferred_locale: { $ref: '#/components/schemas/Locale' }
+    CreatePracticeRequest:
+      type: object
+      additionalProperties: false
+      required: [name, ceremony_type_ids]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        ceremony_type_ids:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items: { type: string, format: uuid }
+    CreatePracticeResult:
+      type: object
+      additionalProperties: false
+      required: [organization, role, organization_priest_id, offering_count, idempotent_replay]
+      properties:
+        organization:
+          type: object
+          additionalProperties: false
+          required: [id, name, kind, timezone, status, version]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            kind: { type: string, enum: [SOLO, COLLECTIVE] }
+            timezone: { type: string }
+            status: { type: string, enum: [ACTIVE, CLOSED] }
+            version: { type: integer, minimum: 1 }
+        role: { type: string, const: OWNER }
+        organization_priest_id: { type: string, format: uuid }
+        offering_count: { type: integer, minimum: 1, maximum: 20 }
+        idempotent_replay: { type: boolean }
+    CeremonyType:
+      type: object
+      additionalProperties: false
+      required: [id, slug, name_en, name_hi, default_duration_min]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name_en: { type: string }
+        name_hi: { type: string }
+        default_duration_min: { type: integer, minimum: 15, maximum: 1440 }
+    Organization:
+      type: object
+      additionalProperties: false
+      required: [id, kind, name, slug, timezone, plan, status, version]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [SOLO, COLLECTIVE] }
+        name: { type: string }
+        slug: { type: string }
+        timezone: { type: string }
+        plan: { type: string, enum: [PILOT] }
+        status: { type: string, enum: [ACTIVE, CLOSED] }
+        version: { type: integer, minimum: 1 }
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              enum: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VERSION_CONFLICT, INVALID_TRANSITION, IDEMPOTENCY_REUSE,
+                     BOOKING_CONFLICT, BUFFER_CONFLICT, DUPLICATE, VALIDATION_FAILED, QUOTA_EXCEEDED, INTERNAL,
+                     VENDOR_UNAVAILABLE]
+            reason: { type: string }
+            message: { type: string }
+            request_id: { type: string, format: uuid }
+            details: { type: object }

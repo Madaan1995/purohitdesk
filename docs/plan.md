@@ -125,7 +125,7 @@ Punjabi names stay NULL until P1.
 
 ---
 
-## M2 — Auth, session, onboarding and roles
+## M2 — Auth, session, onboarding and roles (built, not founder-verified)
 
 **Delivers**
 - Google sign-in via Supabase Auth with `@supabase/ssr` (httpOnly cookie session); sign-out.
@@ -144,12 +144,12 @@ Punjabi names stay NULL until P1.
 **SQL tests (PROPOSED):** spec `01_bootstrap_identity` assertions (with "the chosen offerings (at least 1)"), forged tenant → zero rows/404, revoked member loses access, bootstrap refuses to run inside a tenant context.
 
 **Build checklist**
-- [ ] Proposal approved (columns, function bodies, response shapes for Session/Organization/onboarding, pages, ops scripts)
-- [ ] Migrations, checks script, SQL tests
-- [ ] Auth, `src/db`, routes, OpenAPI operations, pages, i18n catalogs
-- [ ] Ops runbook and member script
-- [ ] Founder instructions for JWKS, Google OAuth and redirect URLs
-- [ ] Real output shown; CI green
+- [ ] Proposal approved — *written overnight as `docs/proposals/m2.md`, every decision AUTO-DECIDED, awaiting founder review* — (columns, function bodies, response shapes for Session/Organization/onboarding, pages, ops scripts)
+- [x] Migrations, checks script, SQL tests
+- [x] Auth, `src/db`, routes, OpenAPI operations, pages, i18n catalogs
+- [x] Ops runbook and member script
+- [x] Founder instructions for JWKS, Google OAuth and redirect URLs
+- [x] Real output shown; CI green (CI: see the PR)
 
 **Founder verification**
 - [ ] Apply the M2 migrations; run `supabase/checks/m2_checks.sql`: all PASS.
