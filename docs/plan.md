@@ -76,7 +76,7 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 - Identity and tenancy migration: tables below, each with ENABLE + FORCE RLS, role-scoped policies and grants in the same file; membership helpers owned by `app_authz` (`current_member_role`, `current_member_has`, `is_active_member_of`, `current_priest_profile_id`, `assert_permission`); the `role_permissions` matrix from spec §08.
 - `supabase/seed/ceremony_types.sql` (20 ceremonies, idempotent upsert).
 - `supabase/checks/m1_checks.sql`: read-only, prints PASS/FAIL per check.
-- SQL test harness run by `npm run test:db` (runner PROPOSED: `supabase/tests/run.sh` via psql) applying migrations to a throwaway Postgres as a non-superuser `pd_migrator`, with a stub `auth.users`; CI job with a Postgres service container of the **same major version as staging**.
+- SQL test harness: `npm run test:db` runs `supabase/tests/run.sh` (psql), applying migrations to a throwaway Postgres as a non-superuser `pd_migrator`, with a stub `auth.users`; CI job with a Postgres service container of the **same major version as staging**.
 - Tests: RLS forced on every table; no PUBLIC policy or EXECUTE; no role BYPASSRLS/SUPERUSER; `app_runtime` has no INSERT/UPDATE/DELETE; missing context → zero rows; `is_valid_timezone` accepts `Asia/Kolkata` and rejects `IST`.
 
 **Tables:** `role_permissions`, `app_users`, `organizations`, `org_members`, `priest_profiles`, `organization_priests`, `ceremony_types`.
