@@ -6,18 +6,19 @@ SELECT test.is((
   SELECT string_agg(p.oid::regprocedure::text, ', ' ORDER BY p.oid::regprocedure::text)
   FROM pg_proc p
   WHERE p.pronamespace = 'app'::regnamespace AND has_function_privilege('app_runtime', p.oid, 'EXECUTE')),
-  'app.bootstrap_practice(text,uuid[],text,text), app.current_actor_id(), app.current_member_role(), '
-  'app.current_tenant_id(), app.ensure_current_user(text), app.is_active_member_of(uuid), '
-  'app.update_my_profile(text,text)',
+  'app.bootstrap_practice(text,uuid[],text,text), app.create_customer(text,text,text,text,text), '
+  'app.current_actor_id(), app.current_member_role(), app.current_tenant_id(), app.ensure_current_user(text), '
+  'app.is_active_member_of(uuid), app.update_customer(uuid,integer,jsonb,text,text), app.update_my_profile(text,text)',
   'every function app_runtime may EXECUTE is an endpoint command or used by its RLS policies');
 
 SELECT test.is((
   SELECT string_agg(p.proname || '=' || o.rolname, ', ' ORDER BY p.proname)
   FROM pg_proc p JOIN pg_roles o ON o.oid = p.proowner
   WHERE p.pronamespace = 'app'::regnamespace AND p.prosecdef),
-  'assert_permission=app_authz, bootstrap_practice=app_bootstrap, current_member_has=app_authz, '
-  'current_member_role=app_authz, current_priest_profile_id=app_authz, ensure_current_user=app_bootstrap, '
-  'is_active_member_of=app_authz, update_my_profile=app_domain',
+  'assert_permission=app_authz, bootstrap_practice=app_bootstrap, create_customer=app_domain, '
+  'current_member_has=app_authz, current_member_role=app_authz, current_priest_profile_id=app_authz, '
+  'ensure_current_user=app_bootstrap, is_active_member_of=app_authz, update_customer=app_domain, '
+  'update_my_profile=app_domain',
   'SECURITY DEFINER functions and their NOLOGIN owners');
 
 SELECT test.ok(NOT EXISTS (
