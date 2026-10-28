@@ -18,7 +18,7 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 
 ---
 
-## M0 — Project setup
+## M0 — Project setup (built, not founder-verified)
 
 **Delivers**
 - One Next.js app at the repo root (App Router, `src/` directory, Tailwind), npm.
@@ -51,13 +51,13 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 **Domain/unit tests (PROPOSED):** health route returns exactly `{status, commit}` with 200 and `Cache-Control: no-store`; commit falls back to `"unknown"`.
 
 **Build checklist**
-- [ ] Scaffold app and module folders; lint boundary rule for `src/domain`
-- [ ] `typecheck`, `lint`, `test`, `build` scripts; Vitest tests
-- [ ] `/api/v1/healthz`
-- [ ] Placeholder bilingual home page with Tailwind
-- [ ] `vercel.json` (`bom1`), `.env.example`, `supabase/migrations/.gitkeep`
-- [ ] `.github/workflows/ci.yml`
-- [ ] Real output of lint, typecheck, test, build shown
+- [x] Scaffold app and module folders; lint boundary rule for `src/domain`
+- [x] `typecheck`, `lint`, `test`, `build` scripts; Vitest tests
+- [x] `/api/v1/healthz`
+- [x] Placeholder bilingual home page with Tailwind
+- [x] `vercel.json` (`bom1`), `.env.example`, `supabase/migrations/.gitkeep`
+- [x] `.github/workflows/ci.yml`
+- [x] Real output of lint, typecheck, test, build shown
 
 **Founder verification**
 - [ ] In Vercel (Hobby), import the GitHub repo; framework Next.js; root directory `/`.
