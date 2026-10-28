@@ -6,8 +6,8 @@ Voice is out of scope for this plan (M14 is a placeholder). No dates: milestones
 
 ## How every milestone runs
 
-- [ ] Branch from the latest `main` as `m<N>-<topic>` (PROPOSED naming). The founder does all merges; nothing is pushed to `main`.
-- [ ] **Proposal first.** Write `docs/proposals/m<N>.md` (PROPOSED location) with everything the spec does not pin down for this milestone: full columns and constraints, function signatures and bodies (in outline), RLS policies and grants, API request/response shapes, UI screens, test list, any new env var. Everything in it is marked PROPOSED. **Stop until the founder approves.**
+- [ ] Branch from the latest `main` as `m<N>-<topic>`. The founder does all merges; nothing is pushed to `main`.
+- [ ] **Proposal first.** Write `docs/proposals/m<N>.md` with everything the spec does not pin down for this milestone: full columns and constraints, function signatures and bodies (in outline), RLS policies and grants, API request/response shapes, UI screens, test list, any new env var. Everything in it is marked PROPOSED. **Stop until the founder approves.**
 - [ ] Build only what was approved: migrations in `supabase/migrations/` (RLS, policies and grants in the same migration as their table), `supabase/checks/` verification script, SQL tests in `supabase/tests/` (throwaway Postgres only), `api/openapi.yaml` operations, TypeScript in `src/`, Hindi and English strings.
 - [ ] Run `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` (and the SQL suite once it exists) and paste the real output.
 - [ ] CI green on the pull request.
@@ -47,7 +47,7 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 | Node | `engines: >=22.18` | Spec ADR-001; Vercel Node 22.x |
 
 **Tables:** none.
-**Env vars:** none to set. PROPOSED: the health check reads `VERCEL_GIT_COMMIT_SHA`, which Vercel provides automatically; it is listed in `.env.example` as "set by Vercel, do not set", and the route returns `"unknown"` when it is absent (local runs).
+**Env vars:** none to set. The health check reads `VERCEL_GIT_COMMIT_SHA`, which Vercel provides automatically; it is listed in `.env.example` as "set by Vercel, do not set", and the route returns `"unknown"` when it is absent (local runs).
 **Domain/unit tests (PROPOSED):** health route returns exactly `{status, commit}` with 200 and `Cache-Control: no-store`; commit falls back to `"unknown"`.
 
 **Build checklist**
@@ -76,7 +76,7 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 - Identity and tenancy migration: tables below, each with ENABLE + FORCE RLS, role-scoped policies and grants in the same file; membership helpers owned by `app_authz` (`current_member_role`, `current_member_has`, `is_active_member_of`, `current_priest_profile_id`, `assert_permission`); the `role_permissions` matrix from spec §08.
 - `supabase/seed/ceremony_types.sql` (20 ceremonies, idempotent upsert).
 - `supabase/checks/m1_checks.sql`: read-only, prints PASS/FAIL per check.
-- SQL test harness (PROPOSED: `supabase/tests/run.sh` via psql, `npm run test:db`) applying migrations to a throwaway Postgres as a non-superuser `pd_migrator`, with a stub `auth.users`; CI job with a Postgres service container of the **same major version as staging**.
+- SQL test harness run by `npm run test:db` (runner PROPOSED: `supabase/tests/run.sh` via psql) applying migrations to a throwaway Postgres as a non-superuser `pd_migrator`, with a stub `auth.users`; CI job with a Postgres service container of the **same major version as staging**.
 - Tests: RLS forced on every table; no PUBLIC policy or EXECUTE; no role BYPASSRLS/SUPERUSER; `app_runtime` has no INSERT/UPDATE/DELETE; missing context → zero rows; `is_valid_timezone` accepts `Asia/Kolkata` and rejects `IST`.
 
 **Tables:** `role_permissions`, `app_users`, `organizations`, `org_members`, `priest_profiles`, `organization_priests`, `ceremony_types`.
@@ -110,7 +110,7 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 Punjabi names stay NULL until P1.
 
 **Build checklist**
-- [ ] Proposal approved (columns, policies, helper bodies, check script, test harness, seed)
+- [ ] Proposal approved (columns, policies, helper bodies, check script, test harness, seed), including a concrete example migration file name for the PROPOSED naming scheme (spec §04 §1)
 - [ ] Migrations written; seed written; `m1_checks.sql` written
 - [ ] SQL tests pass on a throwaway Postgres; CI database job green
 - [ ] Real output shown
@@ -338,7 +338,7 @@ Not planned. Starts only after P0, with the offline evaluation spike (spec T-15)
 
 | # | Milestone | New tables | Env vars |
 | --- | --- | --- | --- |
-| M0 | Project setup | — | — (reads Vercel's `VERCEL_GIT_COMMIT_SHA`, PROPOSED) |
+| M0 | Project setup | — | — (reads Vercel's `VERCEL_GIT_COMMIT_SHA`) |
 | M1 | Foundation schema with RLS | role_permissions, app_users, organizations, org_members, priest_profiles, organization_priests, ceremony_types | — |
 | M2 | Auth, session, onboarding, roles | offerings, org_sequences, idempotency_keys | NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, DATABASE_URL |
 | M3 | Platform proof | — | — |
