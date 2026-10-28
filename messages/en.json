@@ -1,0 +1,86 @@
+{
+  "app": {
+    "name": "PurohitDesk",
+    "nameLatin": "पुरोहित डेस्क"
+  },
+  "nav": {
+    "signOut": "Sign out",
+    "switchLanguage": "हिन्दी",
+    "switchPractice": "Switch practice",
+    "addPractice": "Add another practice"
+  },
+  "signIn": {
+    "title": "Sign in",
+    "intro": "Bookings, customers and dakshina for pandits — in one place.",
+    "google": "Sign in with Google",
+    "failed": "Sign-in did not work. Please try again.",
+    "notConfigured": "Sign-in is not switched on yet."
+  },
+  "onboarding": {
+    "title": "Create your practice",
+    "practiceName": "Practice name",
+    "practiceNameHint": "For example: Pandit Ramesh Sharma",
+    "ceremonies": "Which ceremonies do you perform?",
+    "ceremoniesHint": "Pick at least one. You can change this later.",
+    "minutes": "{count} min",
+    "submit": "Create practice",
+    "saving": "Creating…",
+    "quota": "You can have at most 3 practices.",
+    "back": "Back"
+  },
+  "home": {
+    "currentPractice": "Your practice",
+    "timezone": "Time zone",
+    "yourRole": "Your role",
+    "permissions": "You can"
+  },
+  "roles": {
+    "OWNER": "Owner",
+    "ADMIN": "Admin",
+    "PRIEST": "Priest",
+    "STAFF": "Staff",
+    "READ_ONLY": "Read only"
+  },
+  "permissions": {
+    "ORG_READ": "See the practice",
+    "ORG_SETTINGS": "Change practice settings",
+    "MEMBER_MANAGE": "Manage members",
+    "AUDIT_READ": "See the audit log",
+    "EXPORT_DATA": "Download data",
+    "CUSTOMER_READ": "See customers",
+    "CUSTOMER_WRITE": "Add and edit customers",
+    "CUSTOMER_ERASE": "Erase a customer's data",
+    "CATALOG_WRITE": "Edit ceremonies and samagri lists",
+    "BOOKING_READ": "See bookings",
+    "BOOKING_CREATE": "Create bookings",
+    "BOOKING_EDIT": "Edit bookings",
+    "BOOKING_CONFIRM": "Confirm bookings",
+    "BOOKING_CONFIRM_OWN": "Confirm own bookings",
+    "BOOKING_CANCEL": "Cancel bookings",
+    "BOOKING_CANCEL_OWN": "Cancel own bookings",
+    "BOOKING_COMPLETE": "Mark bookings complete",
+    "BOOKING_COMPLETE_OWN": "Mark own bookings complete",
+    "BLOCK_MANAGE": "Block calendar time",
+    "BLOCK_MANAGE_OWN": "Block own calendar time",
+    "PAYMENT_RECORD": "Record dakshina",
+    "PAYMENT_REVERSE": "Reverse a dakshina entry",
+    "SHARE_MESSAGE": "Share bookings on WhatsApp",
+    "VOICE_USE": "Book by voice"
+  },
+  "errors": {
+    "UNAUTHENTICATED": "Please sign in again.",
+    "FORBIDDEN": "You do not have permission to do this.",
+    "NOT_FOUND": "Not found.",
+    "VERSION_CONFLICT": "Someone else changed this first. Reload the page.",
+    "INVALID_TRANSITION": "This change is not possible right now.",
+    "IDEMPOTENCY_REUSE": "This request was already sent with different details. Reload the page.",
+    "BOOKING_CONFLICT": "Pandit ji has another ceremony at this time.",
+    "BUFFER_CONFLICT": "Travel time overlaps another booking.",
+    "DUPLICATE": "This already exists.",
+    "VALIDATION_FAILED": "Please check the details.",
+    "QUOTA_EXCEEDED": "Limit reached.",
+    "INTERNAL": "Something went wrong. Please try again.",
+    "VENDOR_UNAVAILABLE": "The service is unavailable. Please try again.",
+    "NETWORK": "Check your internet connection and try again."
+  }
+}
