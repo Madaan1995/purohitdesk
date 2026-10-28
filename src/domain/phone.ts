@@ -27,3 +27,9 @@ export function normalizeIndianPhone(input: string): string | null {
 export function phoneDigits(input: string): string {
   return input.replace(/\D/g, '');
 }
+
+/** Display form: +91 98765 43210 for Indian mobiles; other numbers unchanged. */
+export function formatPhone(e164: string): string {
+  const m = /^\+91(\d{5})(\d{5})$/.exec(e164);
+  return m ? `+91 ${m[1]} ${m[2]}` : e164;
+}

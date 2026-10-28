@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeIndianPhone, phoneDigits } from './phone';
+import { formatPhone, normalizeIndianPhone, phoneDigits } from './phone';
 
 describe('normalizeIndianPhone', () => {
   it.each([
@@ -28,5 +28,14 @@ describe('normalizeIndianPhone', () => {
 
   it('extracts digits for contains-search', () => {
     expect(phoneDigits('+91 98765-43210')).toBe('919876543210');
+  });
+});
+
+describe('formatPhone', () => {
+  it('groups Indian numbers as +91 98765 43210', () => {
+    expect(formatPhone('+919876543210')).toBe('+91 98765 43210');
+  });
+  it('leaves other numbers unchanged', () => {
+    expect(formatPhone('+14155550100')).toBe('+14155550100');
   });
 });
