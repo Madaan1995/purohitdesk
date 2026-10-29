@@ -1,6 +1,6 @@
 import { AppHeader } from '@/app/_components/AppHeader';
 import { OnboardingForm } from '@/app/_components/OnboardingForm';
-import { currentActor } from '@/app/_lib/page-auth';
+import { currentIdentity } from '@/app/_lib/page-auth';
 import { loadSession } from '@/app/_lib/session';
 import { withTenantTx } from '@/db';
 import { getTranslations } from 'next-intl/server';
@@ -9,11 +9,11 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 export default async function OnboardingPage() {
-  const actorId = await currentActor();
-  if (!actorId) redirect('/sign-in');
+  const identity = await currentIdentity();
+  if (!identity) redirect('/sign-in');
   const store = await cookies();
-  const session = await loadSession(actorId, store.get('NEXT_LOCALE')?.value ?? null);
-  const ceremonies = await withTenantTx({ actorId }, (tx) =>
+  const session = await loadSession(identity, store.get('NEXT_LOCALE')?.value ?? null);
+  const ceremonies = await withTenantTx({ actorId: identity.actorId }, (tx) =>
     tx<{ id: string; name_en: string; name_hi: string; default_duration_min: number }[]>`
       SELECT id, name_en, name_hi, default_duration_min FROM app.ceremony_types ORDER BY name_en`,
   );

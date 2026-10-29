@@ -1,4 +1,4 @@
--- M1 foundation: schema `app`, the six application roles, shared helpers and triggers.
+-- M1 foundation: schema `app`, the seven application roles, shared helpers and triggers.
 -- Spec: docs/spec.md §04 §1, §04 §7, §04 §9, §11 §3. Proposal: docs/proposals/m1.md.
 -- Apply as the migration user (Supabase: `postgres`) as one script. No BEGIN/COMMIT here on purpose.
 
@@ -9,7 +9,8 @@ CREATE SCHEMA app;
 REVOKE ALL ON SCHEMA app FROM PUBLIC;
 
 -- ---------------------------------------------------------------------------
--- Roles: all NOLOGIN, none BYPASSRLS. app_runtime gets LOGIN from the founder in M2.
+-- Roles: all NOLOGIN, none BYPASSRLS. app_runtime gets LOGIN from the founder in M2. app_operator owns the
+-- operator commands (supabase/ops, from M2), which only the migration user may execute.
 -- ---------------------------------------------------------------------------
 CREATE ROLE app_runtime     NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
 CREATE ROLE app_domain      NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
@@ -17,15 +18,14 @@ CREATE ROLE app_authz       NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATER
 CREATE ROLE app_bootstrap   NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
 CREATE ROLE app_freebusy    NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
 CREATE ROLE app_maintenance NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+CREATE ROLE app_operator    NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
 
--- The migration user must be a member of a role to hand function ownership to it (spec U1).
-GRANT app_domain      TO CURRENT_USER;
-GRANT app_authz       TO CURRENT_USER;
-GRANT app_bootstrap   TO CURRENT_USER;
-GRANT app_freebusy    TO CURRENT_USER;
-GRANT app_maintenance TO CURRENT_USER;
+-- The migration user is never left a member of an application role. A migration that hands function ownership to
+-- a role grants that role to CURRENT_USER, hands over, and revokes it again before it ends (spec U1; PostgreSQL
+-- requires membership in the new owner).
 
-GRANT USAGE ON SCHEMA app TO app_runtime, app_domain, app_authz, app_bootstrap, app_freebusy, app_maintenance;
+GRANT USAGE ON SCHEMA app
+  TO app_runtime, app_domain, app_authz, app_bootstrap, app_freebusy, app_maintenance, app_operator;
 
 -- ---------------------------------------------------------------------------
 -- Request context (spec §04 §9). Set per transaction by withTenantTx with is_local = true.

@@ -1,4 +1,5 @@
 import { command, withTenantTx } from '@/db';
+import type { Identity } from './auth';
 import type { Locale } from '@/domain/locale';
 import type { Permission, Role } from '@/domain/permissions';
 
@@ -20,12 +21,14 @@ export interface Session {
 }
 
 /**
- * First login creates the app user (ensure_current_user); then the actor's ACTIVE memberships with each role's
- * permissions, read as app_runtime under RLS (no tenant selected: own memberships only).
+ * First login creates the app user (ensure_current_user, with the token's display name); then the actor's ACTIVE
+ * memberships with each role's permissions, read as app_runtime under RLS (no tenant selected: own memberships only).
  */
-export async function loadSession(actorId: string, cookieLocale: string | null): Promise<Session> {
-  return withTenantTx({ actorId }, async (tx) => {
-    const user = await command<SessionUser>(tx`SELECT app.ensure_current_user(${cookieLocale}) AS result`);
+export async function loadSession(identity: Identity, cookieLocale: string | null): Promise<Session> {
+  return withTenantTx({ actorId: identity.actorId }, async (tx) => {
+    const user = await command<SessionUser>(
+      tx`SELECT app.ensure_current_user(${cookieLocale}, ${identity.displayName}) AS result`,
+    );
     const rows = await tx<{ id: string; name: string; kind: 'SOLO' | 'COLLECTIVE'; timezone: string; role: Role; permissions: Permission[] }[]>`
       SELECT o.id, o.name, o.kind, o.timezone, m.role,
              coalesce((SELECT array_agg(rp.permission ORDER BY rp.permission)

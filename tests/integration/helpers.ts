@@ -16,9 +16,10 @@ export async function makeAuthConfig(): Promise<AuthConfig> {
   return { jwks: createLocalJWKSet({ keys: [jwk] }), issuer: ISSUER };
 }
 
-export async function tokenFor(sub: string): Promise<string> {
+/** A Supabase access token; Google sign-in puts the person's name in user_metadata.full_name. */
+export async function tokenFor(sub: string, fullName?: string): Promise<string> {
   if (!signingKey) throw new Error('call makeAuthConfig first');
-  return new SignJWT({ role: 'authenticated' })
+  return new SignJWT({ role: 'authenticated', ...(fullName === undefined ? {} : { user_metadata: { full_name: fullName } }) })
     .setProtectedHeader({ alg: 'ES256', kid: 'test' })
     .setSubject(sub)
     .setIssuer(ISSUER)

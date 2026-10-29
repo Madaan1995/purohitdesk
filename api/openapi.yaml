@@ -63,6 +63,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
         '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
   /onboarding/practice:
     post:
@@ -89,6 +90,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CreatePracticeResult' }
         '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
@@ -458,7 +460,10 @@ components:
       description: >-
         Supabase access token, verified against the project's JWKS (asymmetric keys only), issuer
         <SUPABASE_URL>/auth/v1, audience "authenticated". The PWA's own pages may instead send the httpOnly Supabase
-        session cookie.
+        session cookie; a cookie-authenticated write (any method but GET/HEAD) must then be same-origin
+        (`Sec-Fetch-Site: same-origin`, or without Fetch Metadata an `Origin` equal to the API's origin), else 403
+        FORBIDDEN with reason CROSS_ORIGIN_REQUEST. Every request body must be sent as `Content-Type:
+        application/json`, else 422 VALIDATION_FAILED with reason JSON_REQUIRED.
   parameters:
     TenantId:
       name: X-Tenant-ID

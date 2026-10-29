@@ -20,8 +20,10 @@ beforeAll(async () => {
   config = { jwks: createLocalJWKSet({ keys: [jwk] }), issuer: ISSUER };
 });
 
-function token(overrides: { aud?: string; iss?: string; exp?: string | number; sub?: string; key?: CryptoKey } = {}) {
-  return new SignJWT({ role: 'authenticated' })
+function token(
+  overrides: { aud?: string; iss?: string; exp?: string | number; sub?: string; key?: CryptoKey; meta?: unknown } = {},
+) {
+  return new SignJWT({ role: 'authenticated', ...(overrides.meta === undefined ? {} : { user_metadata: overrides.meta }) })
     .setProtectedHeader({ alg: 'ES256', kid: 'k1' })
     .setSubject(overrides.sub ?? SUB)
     .setIssuer(overrides.iss ?? ISSUER)
@@ -45,7 +47,19 @@ async function reason(promise: Promise<unknown>): Promise<string | undefined> {
 
 describe('verifyAccessToken (spec API-SEC-1)', () => {
   it('accepts a valid Supabase token and returns its sub', async () => {
-    await expect(verifyAccessToken(await token(), config)).resolves.toBe(SUB);
+    await expect(verifyAccessToken(await token(), config)).resolves.toEqual({ actorId: SUB, displayName: null });
+  });
+
+  it('returns the user_metadata name as display text (full_name, else name)', async () => {
+    const full = await token({ meta: { full_name: 'Ramesh Sharma', name: 'R' } });
+    expect((await verifyAccessToken(full, config)).displayName).toBe('Ramesh Sharma');
+    expect((await verifyAccessToken(await token({ meta: { name: 'Ramesh' } }), config)).displayName).toBe('Ramesh');
+  });
+
+  it('ignores a user_metadata name that is not a string', async () => {
+    const odd = await token({ meta: { full_name: { first: 'x' }, name: 42 } });
+    expect((await verifyAccessToken(odd, config)).displayName).toBeNull();
+    expect((await verifyAccessToken(await token({ meta: 'Ramesh' }), config)).displayName).toBeNull();
   });
 
   it('rejects a missing token', async () => {

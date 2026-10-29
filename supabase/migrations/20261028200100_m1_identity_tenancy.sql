@@ -227,6 +227,8 @@ BEGIN
 END
 $$;
 
+-- Ownership hand-over: the migration user is a member of app_authz only until the end of this file.
+GRANT app_authz TO CURRENT_USER;
 GRANT CREATE ON SCHEMA app TO app_authz;
 ALTER FUNCTION app.current_member_role() OWNER TO app_authz;
 ALTER FUNCTION app.current_member_has(text) OWNER TO app_authz;
@@ -319,6 +321,32 @@ GRANT EXECUTE ON FUNCTION
   app.current_priest_profile_id(), app.assert_permission(text)
   TO app_domain, app_bootstrap, app_freebusy, app_maintenance;
 
+-- These functions are owned by app_authz now. A GRANT by a user without the owner's rights only warns and grants
+-- nothing, so check that every EXECUTE grant above is really in the ACL.
+DO $$
+DECLARE
+  v record;
+BEGIN
+  FOR v IN
+    SELECT x.fn, x.grantee
+    FROM (VALUES ('app.current_member_role()', 'app_runtime'), ('app.is_active_member_of(uuid)', 'app_runtime'))
+      AS x (fn, grantee)
+    UNION ALL
+    SELECT f.fn, g.grantee
+    FROM (VALUES ('app.current_member_role()'), ('app.current_member_has(text)'), ('app.is_active_member_of(uuid)'),
+                 ('app.current_priest_profile_id()'), ('app.assert_permission(text)')) AS f (fn)
+    CROSS JOIN (VALUES ('app_domain'), ('app_bootstrap'), ('app_freebusy'), ('app_maintenance')) AS g (grantee)
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) a
+      WHERE p.oid = v.fn::regprocedure AND a.grantee = v.grantee::regrole AND a.privilege_type = 'EXECUTE'
+    ) THEN
+      RAISE EXCEPTION 'GRANT EXECUTE ON FUNCTION % TO % did not take effect', v.fn, v.grantee;
+    END IF;
+  END LOOP;
+END
+$$;
+
 DO $$
 DECLARE
   r text;
@@ -328,6 +356,35 @@ BEGIN
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL TABLES IN SCHEMA app FROM %I', r);
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA app FROM %I', r);
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA app FROM %I', r);
+    END IF;
+  END LOOP;
+END
+$$;
+
+-- ---------------------------------------------------------------------------
+-- End of the ownership hand-over: the migration user (Supabase: postgres) keeps no application role's privileges.
+-- ---------------------------------------------------------------------------
+REVOKE app_authz FROM CURRENT_USER;
+
+-- Fails if the migration user can still use or become an application role (skipped for a superuser, which can
+-- anyway). PostgreSQL 16+ keeps the creator's ADMIN OPTION, which confers neither.
+DO $$
+DECLARE
+  r     text;
+  v_set boolean;
+BEGIN
+  IF (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname = CURRENT_USER) THEN
+    RETURN;
+  END IF;
+  FOREACH r IN ARRAY ARRAY['app_runtime', 'app_domain', 'app_authz', 'app_bootstrap', 'app_freebusy',
+                           'app_maintenance', 'app_operator'] LOOP
+    IF pg_catalog.current_setting('server_version_num')::int >= 160000 THEN
+      v_set := pg_catalog.pg_has_role(CURRENT_USER, r, 'SET');
+    ELSE
+      v_set := pg_catalog.pg_has_role(CURRENT_USER, r, 'MEMBER');
+    END IF;
+    IF v_set OR pg_catalog.pg_has_role(CURRENT_USER, r, 'USAGE') THEN
+      RAISE EXCEPTION 'migration user % is still a member of %', CURRENT_USER, r;
     END IF;
   END LOOP;
 END

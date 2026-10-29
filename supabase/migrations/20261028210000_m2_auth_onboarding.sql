@@ -138,10 +138,6 @@ GRANT SELECT ON app.ceremony_types TO app_bootstrap;
 GRANT UPDATE (display_name, preferred_locale) ON app.app_users TO app_domain;
 GRANT SELECT, INSERT, UPDATE ON app.idempotency_keys TO app_domain, app_bootstrap;
 
--- First login reads the Supabase auth user (spec §08 §1, risk U1).
-GRANT USAGE ON SCHEMA auth TO app_bootstrap;
-GRANT SELECT (id, raw_user_meta_data) ON auth.users TO app_bootstrap;
-
 -- ---------------------------------------------------------------------------
 -- Internal helpers (SECURITY INVOKER: they run with the privileges of the calling command's owner)
 -- ---------------------------------------------------------------------------
@@ -206,15 +202,18 @@ $$;
 
 -- ---------------------------------------------------------------------------
 -- ensure_current_user (owner app_bootstrap): first login creates the app user.
+-- No application role reads auth.users: the foreign key app_users.auth_user_id -> auth.users(id) proves the actor is
+-- a Supabase auth user (the check runs with the rights of auth.users' owner). p_display_name comes from the verified
+-- JWT's user_metadata; it is untrusted display text, cleaned here and never used for authorization.
 -- ---------------------------------------------------------------------------
-CREATE FUNCTION app.ensure_current_user(p_locale text DEFAULT NULL) RETURNS jsonb
+CREATE FUNCTION app.ensure_current_user(p_locale text DEFAULT NULL, p_display_name text DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
   v_actor uuid := app.current_actor_id();
   v_user  app.app_users%ROWTYPE;
-  v_meta  jsonb;
+  v_name  text;
 BEGIN
   IF v_actor IS NULL THEN
     PERFORM app.raise_error('PD401', 'CONTEXT_MISSING');
@@ -222,17 +221,18 @@ BEGIN
 
   SELECT * INTO v_user FROM app.app_users u WHERE u.id = v_actor;
   IF NOT FOUND THEN
-    SELECT u.raw_user_meta_data INTO v_meta FROM auth.users u WHERE u.id = v_actor;
-    IF NOT FOUND THEN
+    -- Control characters, zero-width space and bidi marks/overrides become spaces; runs of space collapse; at most
+    -- 120 characters. ZWNJ/ZWJ (U+200C/U+200D) are kept: Devanagari uses them to shape conjuncts.
+    v_name := nullif(btrim(left(btrim(pg_catalog.regexp_replace(coalesce(p_display_name, ''),
+                '[[:cntrl:][:space:]\u200B\u200E\u200F\u202A-\u202E\u2066-\u2069]+', ' ', 'g')), 120)), '');
+    BEGIN
+      INSERT INTO app.app_users (id, auth_user_id, display_name, preferred_locale)
+      VALUES (v_actor, v_actor, v_name, CASE WHEN p_locale IN ('hi', 'en') THEN p_locale ELSE 'hi' END)
+      ON CONFLICT (id) DO NOTHING;
+    EXCEPTION WHEN foreign_key_violation THEN
+      -- Not a Supabase auth user (spec §08 §1).
       PERFORM app.raise_error('PD401', 'CONTEXT_MISSING');
-    END IF;
-    INSERT INTO app.app_users (id, auth_user_id, display_name, preferred_locale)
-    VALUES (
-      v_actor,
-      v_actor,
-      nullif(btrim(left(btrim(coalesce(v_meta ->> 'full_name', v_meta ->> 'name', '')), 120)), ''),
-      CASE WHEN p_locale IN ('hi', 'en') THEN p_locale ELSE 'hi' END)
-    ON CONFLICT (id) DO NOTHING;
+    END;
     SELECT * INTO v_user FROM app.app_users u WHERE u.id = v_actor;
   END IF;
 
@@ -388,24 +388,175 @@ END
 $$;
 
 -- ---------------------------------------------------------------------------
--- Ownership hand-over (temporary CREATE on the schema, spec defect #2) and EXECUTE grants
+-- Operator commands (owner app_operator): add or revoke a non-owner member on staging (supabase/ops). P0 has no
+-- member-management UI. Only the migration user (Supabase: postgres) may execute them; app_operator's policies admit
+-- no OWNER row, so neither function can create, change or revoke an owner even if its checks were wrong.
 -- ---------------------------------------------------------------------------
-GRANT CREATE ON SCHEMA app TO app_bootstrap, app_domain;
-ALTER FUNCTION app.ensure_current_user(text) OWNER TO app_bootstrap;
+CREATE POLICY organizations_operator_read ON app.organizations
+  FOR SELECT TO app_operator
+  USING (true);
+CREATE POLICY app_users_operator_read ON app.app_users
+  FOR SELECT TO app_operator
+  USING (true);
+CREATE POLICY org_members_operator_read ON app.org_members
+  FOR SELECT TO app_operator
+  USING (true);
+CREATE POLICY org_members_operator_insert ON app.org_members
+  FOR INSERT TO app_operator
+  WITH CHECK (role IN ('ADMIN', 'STAFF', 'READ_ONLY'));
+CREATE POLICY org_members_operator_update ON app.org_members
+  FOR UPDATE TO app_operator
+  USING (role <> 'OWNER')
+  WITH CHECK (role IN ('ADMIN', 'STAFF', 'READ_ONLY'));
+
+GRANT SELECT (id, name, status) ON app.organizations TO app_operator;
+GRANT SELECT (id, auth_user_id, status) ON app.app_users TO app_operator;
+GRANT SELECT, INSERT ON app.org_members TO app_operator;
+GRANT UPDATE (role, status) ON app.org_members TO app_operator;
+GRANT EXECUTE ON FUNCTION app.raise_error(text, text, jsonb) TO app_operator;
+
+-- The practice is found by its OWNER and its name, as shown on the home page; the caller looks up user ids in
+-- auth.users (supabase/ops/*.sql). Returns ids, role and status only (no names or e-mails).
+CREATE FUNCTION app._ops_practice(p_owner_user_id uuid, p_practice_name text) RETURNS uuid
+LANGUAGE plpgsql STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_ids uuid[];
+BEGIN
+  SELECT array_agg(o.id) INTO v_ids
+  FROM app.organizations o
+  JOIN app.org_members m ON m.org_id = o.id
+  WHERE m.user_id = p_owner_user_id AND m.role = 'OWNER' AND m.status = 'ACTIVE'
+    AND o.name = p_practice_name AND o.status = 'ACTIVE';
+  IF v_ids IS NULL THEN
+    PERFORM app.raise_error('PD404', 'PRACTICE_NOT_FOUND', '{"resource": "organization"}');
+  END IF;
+  IF cardinality(v_ids) > 1 THEN
+    PERFORM app.raise_error('PD422', 'PRACTICE_NAME_AMBIGUOUS', '{"field": "practice_name"}');
+  END IF;
+  RETURN v_ids[1];
+END
+$$;
+
+CREATE FUNCTION app.ops_add_member(
+  p_owner_user_id uuid, p_practice_name text, p_member_user_id uuid, p_role text
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_org    uuid;
+  v_member app.org_members%ROWTYPE;
+BEGIN
+  IF p_role IS NULL OR p_role NOT IN ('ADMIN', 'STAFF', 'READ_ONLY') THEN
+    -- OWNER is never granted here; PRIEST needs a priest link (not supported by the operator scripts).
+    PERFORM app.raise_error('PD422', 'ROLE_NOT_ALLOWED', '{"field": "role"}');
+  END IF;
+  v_org := app._ops_practice(p_owner_user_id, p_practice_name);
+  IF NOT EXISTS (SELECT 1 FROM app.app_users u
+                 WHERE u.id = p_member_user_id AND u.status = 'ACTIVE' AND u.auth_user_id IS NOT NULL) THEN
+    PERFORM app.raise_error('PD404', 'MEMBER_NOT_SIGNED_IN', '{"resource": "app_user"}');
+  END IF;
+  IF EXISTS (SELECT 1 FROM app.org_members m
+             WHERE m.org_id = v_org AND m.user_id = p_member_user_id AND m.role = 'OWNER') THEN
+    PERFORM app.raise_error('PD422', 'OWNER_UNTOUCHABLE', '{"field": "member"}');
+  END IF;
+
+  INSERT INTO app.org_members (org_id, user_id, role, status)
+  VALUES (v_org, p_member_user_id, p_role, 'ACTIVE')
+  ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role, status = 'ACTIVE'
+  RETURNING * INTO v_member;
+
+  RETURN jsonb_build_object('org_id', v_member.org_id, 'user_id', v_member.user_id, 'role', v_member.role,
+                            'status', v_member.status);
+END
+$$;
+
+CREATE FUNCTION app.ops_revoke_member(p_owner_user_id uuid, p_practice_name text, p_member_user_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_org    uuid;
+  v_member app.org_members%ROWTYPE;
+BEGIN
+  v_org := app._ops_practice(p_owner_user_id, p_practice_name);
+  IF EXISTS (SELECT 1 FROM app.org_members m
+             WHERE m.org_id = v_org AND m.user_id = p_member_user_id AND m.role = 'OWNER') THEN
+    PERFORM app.raise_error('PD422', 'OWNER_UNTOUCHABLE', '{"field": "member"}');
+  END IF;
+
+  UPDATE app.org_members m
+  SET status = 'REVOKED'
+  WHERE m.org_id = v_org AND m.user_id = p_member_user_id AND m.status = 'ACTIVE'
+  RETURNING * INTO v_member;
+  IF NOT FOUND THEN
+    PERFORM app.raise_error('PD404', 'NOT_AN_ACTIVE_MEMBER', '{"resource": "org_member"}');
+  END IF;
+
+  -- Takes effect on the member's next request: every policy checks an ACTIVE membership (spec §08 §1).
+  RETURN jsonb_build_object('org_id', v_member.org_id, 'user_id', v_member.user_id, 'role', v_member.role,
+                            'status', v_member.status);
+END
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Ownership hand-over (temporary CREATE on the schema, spec defect #2) and EXECUTE grants.
+-- The migration user is a member of the function-owning roles only until the end of this file: the hand-over and the
+-- schema-wide REVOKE ... FROM PUBLIC need the owners' rights (app_authz owns the M1 helpers).
+-- ---------------------------------------------------------------------------
+GRANT app_authz, app_bootstrap, app_domain, app_operator TO CURRENT_USER;
+
+GRANT CREATE ON SCHEMA app TO app_bootstrap, app_domain, app_operator;
+ALTER FUNCTION app.ensure_current_user(text, text) OWNER TO app_bootstrap;
 ALTER FUNCTION app.bootstrap_practice(text, uuid[], text, text) OWNER TO app_bootstrap;
 ALTER FUNCTION app.update_my_profile(text, text) OWNER TO app_domain;
-REVOKE CREATE ON SCHEMA app FROM app_bootstrap, app_domain;
+ALTER FUNCTION app.ops_add_member(uuid, text, uuid, text) OWNER TO app_operator;
+ALTER FUNCTION app.ops_revoke_member(uuid, text, uuid) OWNER TO app_operator;
+REVOKE CREATE ON SCHEMA app FROM app_bootstrap, app_domain, app_operator;
 
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA app FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION app._idem_begin(text, text, text), app._idem_finish(text, jsonb)
   TO app_domain, app_bootstrap;
 GRANT EXECUTE ON FUNCTION app._slugify(text) TO app_bootstrap;
+GRANT EXECUTE ON FUNCTION app._ops_practice(uuid, text) TO app_operator;
 GRANT EXECUTE ON FUNCTION
-  app.ensure_current_user(text),
+  app.ensure_current_user(text, text),
   app.update_my_profile(text, text),
   app.bootstrap_practice(text, uuid[], text, text)
   TO app_runtime;
+-- The operator commands: the migration user only (the founder in the SQL editor), never an application role.
+GRANT EXECUTE ON FUNCTION app.ops_add_member(uuid, text, uuid, text), app.ops_revoke_member(uuid, text, uuid)
+  TO CURRENT_USER;
+
+-- These functions are owned by app_bootstrap, app_domain and app_operator. A GRANT by a user without the owner's
+-- rights only warns and grants nothing, so check that every EXECUTE grant above is really in the ACL.
+DO $$
+DECLARE
+  v record;
+BEGIN
+  FOR v IN
+    SELECT x.fn, x.grantee
+    FROM (VALUES
+      ('app.ensure_current_user(text,text)', 'app_runtime'),
+      ('app.update_my_profile(text,text)', 'app_runtime'),
+      ('app.bootstrap_practice(text,uuid[],text,text)', 'app_runtime'),
+      ('app.ops_add_member(uuid,text,uuid,text)', CURRENT_USER::text),
+      ('app.ops_revoke_member(uuid,text,uuid)', CURRENT_USER::text)
+    ) AS x (fn, grantee)
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) a
+      WHERE p.oid = v.fn::regprocedure AND a.grantee = v.grantee::regrole AND a.privilege_type = 'EXECUTE'
+    ) THEN
+      RAISE EXCEPTION 'GRANT EXECUTE ON FUNCTION % TO % did not take effect', v.fn, v.grantee;
+    END IF;
+  END LOOP;
+END
+$$;
 
 DO $$
 DECLARE
@@ -416,6 +567,33 @@ BEGIN
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL TABLES IN SCHEMA app FROM %I', r);
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA app FROM %I', r);
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA app FROM %I', r);
+    END IF;
+  END LOOP;
+END
+$$;
+
+-- ---------------------------------------------------------------------------
+-- End of the hand-over: the migration user keeps no application role's privileges (as after M1).
+-- ---------------------------------------------------------------------------
+REVOKE app_authz, app_bootstrap, app_domain, app_operator FROM CURRENT_USER;
+
+DO $$
+DECLARE
+  r     text;
+  v_set boolean;
+BEGIN
+  IF (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname = CURRENT_USER) THEN
+    RETURN;
+  END IF;
+  FOREACH r IN ARRAY ARRAY['app_runtime', 'app_domain', 'app_authz', 'app_bootstrap', 'app_freebusy',
+                           'app_maintenance', 'app_operator'] LOOP
+    IF pg_catalog.current_setting('server_version_num')::int >= 160000 THEN
+      v_set := pg_catalog.pg_has_role(CURRENT_USER, r, 'SET');
+    ELSE
+      v_set := pg_catalog.pg_has_role(CURRENT_USER, r, 'MEMBER');
+    END IF;
+    IF v_set OR pg_catalog.pg_has_role(CURRENT_USER, r, 'USAGE') THEN
+      RAISE EXCEPTION 'migration user % is still a member of %', CURRENT_USER, r;
     END IF;
   END LOOP;
 END
