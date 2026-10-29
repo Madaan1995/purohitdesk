@@ -72,7 +72,7 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 ## M1 — Foundation schema with RLS (built, not founder-verified)
 
 **Delivers**
-- Earliest migration: schema `app`; the six roles `app_runtime`, `app_domain`, `app_authz`, `app_bootstrap`, `app_freebusy`, `app_maintenance` (NOLOGIN, NOBYPASSRLS; the founder gives `app_runtime` LOGIN and a password in M2); shared helpers `current_actor_id()`, `current_tenant_id()`, `raise_error()`, `is_valid_timezone()`, triggers for version bump and append-only.
+- Earliest migration: schema `app`; the six roles `app_runtime`, `app_domain`, `app_authz`, `app_bootstrap`, `app_freebusy`, `app_maintenance`, plus `app_operator` from the founder review (NOLOGIN, NOBYPASSRLS; the founder gives `app_runtime` LOGIN and a password in M2); shared helpers `current_actor_id()`, `current_tenant_id()`, `raise_error()`, `is_valid_timezone()`, triggers for version bump and append-only.
 - Identity and tenancy migration: tables below, each with ENABLE + FORCE RLS, role-scoped policies and grants in the same file; membership helpers owned by `app_authz` (`current_member_role`, `current_member_has`, `is_active_member_of`, `current_priest_profile_id`, `assert_permission`); the `role_permissions` matrix from spec §08.
 - `supabase/seed/ceremony_types.sql` (20 ceremonies, idempotent upsert).
 - `supabase/checks/m1_checks.sql`: read-only, prints PASS/FAIL per check.
