@@ -9,6 +9,7 @@ INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
   ('c2000000-0000-0000-0000-000000000002', 'second@example.test', '{}'),
   ('c3000000-0000-0000-0000-000000000003', 'third@example.test', '{}'),
   ('c4000000-0000-0000-0000-000000000004', 'fourth@example.test', '{}'),
+  ('c5000000-0000-0000-0000-000000000005', 'fifth@example.test', '{}'),
   ('cd000000-0000-0000-0000-00000000000d', 'detached@example.test', '{}');
 INSERT INTO app.app_users (id, auth_user_id) VALUES
   ('cd000000-0000-0000-0000-00000000000d', 'cd000000-0000-0000-0000-00000000000d');
@@ -30,6 +31,9 @@ SELECT test.is(app.ensure_current_user('hi', 'Someone Else'),
 SELECT test.ctx('c3000000-0000-0000-0000-000000000003');
 SELECT test.is(app.ensure_current_user(NULL, E'Ram\n\tesh\u202E  Sharma\u0007') ->> 'display_name', 'Ram esh Sharma',
   'control and bidi-override characters in the token name are replaced, spaces collapsed');
+SELECT test.ctx('c5000000-0000-0000-0000-000000000005');
+SELECT test.is(app.ensure_current_user(NULL, E'\u0915\u094D\u200D\u0937\u092E\u093E') ->> 'display_name',
+  E'\u0915\u094D\u200D\u0937\u092E\u093E', 'a Devanagari name keeps its zero-width joiner');
 SELECT test.ctx('c4000000-0000-0000-0000-000000000004');
 SELECT test.is(char_length(app.ensure_current_user(NULL, repeat('x', 500)) ->> 'display_name'), 120,
   'a long token name is cut to 120 characters');

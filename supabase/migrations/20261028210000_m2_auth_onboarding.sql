@@ -221,9 +221,10 @@ BEGIN
 
   SELECT * INTO v_user FROM app.app_users u WHERE u.id = v_actor;
   IF NOT FOUND THEN
-    -- Control and bidi-override characters become spaces; runs of space collapse; at most 120 characters.
+    -- Control characters, zero-width space and bidi marks/overrides become spaces; runs of space collapse; at most
+    -- 120 characters. ZWNJ/ZWJ (U+200C/U+200D) are kept: Devanagari uses them to shape conjuncts.
     v_name := nullif(btrim(left(btrim(pg_catalog.regexp_replace(coalesce(p_display_name, ''),
-                '[[:cntrl:][:space:]\u200B-\u200F\u202A-\u202E\u2066-\u2069]+', ' ', 'g')), 120)), '');
+                '[[:cntrl:][:space:]\u200B\u200E\u200F\u202A-\u202E\u2066-\u2069]+', ' ', 'g')), 120)), '');
     BEGIN
       INSERT INTO app.app_users (id, auth_user_id, display_name, preferred_locale)
       VALUES (v_actor, v_actor, v_name, CASE WHEN p_locale IN ('hi', 'en') THEN p_locale ELSE 'hi' END)
