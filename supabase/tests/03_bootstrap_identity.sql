@@ -192,4 +192,26 @@ SELECT test.throws(format($$INSERT INTO app.org_members (org_id, user_id, role) 
   'bootstrap role cannot join an organization it did not create');
 RESET ROLE;
 
+-- ---------------------------------------------------------------- supabase/checks/m2_checks.sql row-level checks
+-- The founder's checks script, run on the practices created above: it must pass, and it must catch leaking policies.
+SELECT test.ctx(NULL, NULL);
+\o /dev/null
+\i supabase/checks/m2_checks.sql
+\o
+SELECT test.is(current_setting('pd_checks.m2_rls')::jsonb - '{no_context_seen,forged_seen,member_seen}'::text[],
+  '{"no_context": "PASS", "forged": "PASS", "member": "PASS"}'::jsonb,
+  'm2_checks.sql: the row-level checks pass on real rows (as the application roles)');
+CREATE POLICY test_leak_runtime ON app.offerings FOR SELECT TO app_runtime USING (true);
+CREATE POLICY test_leak_domain ON app.idempotency_keys FOR SELECT TO app_domain USING (true);
+\o /dev/null
+\i supabase/checks/m2_checks.sql
+\o
+SELECT test.is(current_setting('pd_checks.m2_rls')::jsonb ->> 'no_context_seen',
+  'app_domain app.idempotency_keys, app_runtime app.offerings',
+  'm2_checks.sql names each role and table that leaks rows without a request context');
+SELECT test.is(current_setting('pd_checks.m2_rls')::jsonb ->> 'member', 'FAIL',
+  'm2_checks.sql reports a member who sees another practice''s offerings');
+DROP POLICY test_leak_runtime ON app.offerings;
+DROP POLICY test_leak_domain ON app.idempotency_keys;
+
 ROLLBACK;

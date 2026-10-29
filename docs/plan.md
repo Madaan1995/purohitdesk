@@ -114,7 +114,9 @@ Punjabi names stay NULL until P1.
 - [x] Ownership hand-over leaves the migration user in no application role: each migration grants itself the role it hands functions to and revokes it before it ends; `m1_checks.sql` check 17 and a DO block verify it.
 - [x] Every GRANT that could silently grant nothing (EXECUTE on functions owned by another role) is followed by a DO block that raises if the privilege is not in the ACL.
 - [x] Seventh role `app_operator` (NOLOGIN) created with the others; it owns the M2 operator commands.
-- [ ] CI and harness Postgres major version = staging's: **still open** (staging version not known yet); both stay on 16 until it is.
+- [x] CI and harness on PostgreSQL 17 like staging (17.11): `postgres:17.11` in CI; `run.sh` refuses another major version.
+- [x] Harness mirrors staging's `postgres` (BYPASSRLS after the migrations; staging's `auth` grant options; real login).
+- [x] `m1_checks.sql` checks row-level security as the application roles (`SET ROLE`), since `postgres` bypasses RLS.
 
 **Build checklist**
 - [ ] Proposal approved — *written overnight as `docs/proposals/m1.md`, every decision AUTO-DECIDED, awaiting founder review; the review fixes in §13 are FOUNDER-APPROVED* — (columns, policies, helper bodies, check script, test harness, seed), including a concrete example migration file name for the PROPOSED naming scheme (spec §04 §1)
@@ -123,9 +125,9 @@ Punjabi names stay NULL until P1.
 - [x] Real output shown
 
 **Founder verification**
-- [ ] Create the staging Supabase project in `ap-south-1` (Mumbai) if not done; tell me its Postgres version (Dashboard → Settings → Infrastructure) so CI matches it.
+- [x] Create the staging Supabase project in `ap-south-1` (Mumbai) if not done; tell me its Postgres version (Dashboard → Settings → Infrastructure) so CI matches it. *(17.11, 29 Oct 2026)*
 - [ ] In the SQL editor, run each migration in filename order, then the seed. If a role or ownership statement fails, stop and send me the exact error (spec risk U1; no BYPASSRLS or service-role workaround).
-- [ ] Run `supabase/checks/m1_checks.sql`: every row PASS, `ceremony_types` = 20.
+- [ ] Run `supabase/checks/m1_checks.sql`: every row PASS, `ceremony_types` = 20 (rows 18–20 say NO DATA until a practice exists; run it again after M2).
 - [ ] Data API check: `curl "https://<ref>.supabase.co/rest/v1/organizations" -H "apikey: <publishable key>" -H "Accept-Profile: app"` returns an error that the schema is not exposed.
 - [ ] Table Editor: the `app` tables show RLS enabled.
 - [ ] Preview from M0 still works; `/api/v1/healthz` still returns ok.
@@ -156,6 +158,7 @@ Punjabi names stay NULL until P1.
 - [x] Operator scripts are single calls to `app.ops_add_member` / `app.ops_revoke_member` (owner `app_operator`, SECURITY DEFINER, executable only by `postgres`); no FORCE RLS toggling, no e-mails in the output.
 - [x] Temporary role membership for the ownership hand-over, revoked at the end; GRANTs on other roles' functions verified by DO blocks.
 - [x] CSRF: same-origin check for cookie-authenticated writes and for `/auth/sign-out`; request bodies must be `application/json`.
+- [x] `m2_checks.sql` checks row-level security as the application roles (`SET ROLE`); runbook §0 explains that `postgres` bypasses RLS in the SQL editor.
 
 **Build checklist**
 - [ ] Proposal approved — *written overnight as `docs/proposals/m2.md`, every decision AUTO-DECIDED, awaiting founder review; the review fixes in §8 are FOUNDER-APPROVED* — (columns, function bodies, response shapes for Session/Organization/onboarding, pages, ops scripts)
@@ -166,12 +169,13 @@ Punjabi names stay NULL until P1.
 - [x] Real output shown; CI green (CI: see the PR)
 
 **Founder verification**
-- [ ] Apply the M2 migrations; run `supabase/checks/m2_checks.sql`: all PASS.
+- [ ] Apply the M2 migrations; run `supabase/checks/m2_checks.sql`: all PASS (the row-level rows say NO DATA until a practice exists).
 - [ ] Confirm asymmetric JWT signing keys at the dashboard location I give you.
 - [ ] Set `app_runtime` LOGIN + password per the runbook; add the three env vars to Vercel's Preview environment.
 - [ ] Configure Google sign-in and redirect URLs per my instructions.
 - [ ] Preview: sign in with Google → onboarding. Name a practice, pick 1+ ceremonies, save. Home shows the practice and **OWNER** with its permissions.
 - [ ] Submit onboarding twice quickly (or retry after a network drop): still one practice.
+- [ ] Run `m1_checks.sql` and `m2_checks.sql` again now that a practice exists: every row PASS, including the row-level checks (they run as the application roles; you, `postgres`, bypass RLS — runbook §0).
 - [ ] Create practices until you have 3; a 4th is refused with a clear message. The switcher lists exactly your 3.
 - [ ] Switch to हिन्दी, reload, sign out and in again: still Hindi.
 - [ ] Run the ops script to add a second Google account to your practice as STAFF; sign in with it: home shows STAFF and STAFF's permissions only. Repeat with READ_ONLY.

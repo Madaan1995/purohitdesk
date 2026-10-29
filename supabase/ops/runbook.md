@@ -4,6 +4,24 @@ Everything here is done by the founder. Never paste a password or key into the r
 Supabase and Google change their dashboards often: if a menu name below has moved, look for the same setting
 nearby, and tell me what you saw so I can fix this file.
 
+## 0. Your SQL editor user bypasses row-level security
+
+In the Supabase SQL editor you are `postgres`, and on Supabase `postgres` has **BYPASSRLS** (staging, PostgreSQL
+17.11, probed 29 Oct 2026: `rolsuper = false`, `rolbypassrls = true`, `rolcreaterole = true`). Every query you run
+there sees every practice's rows, whatever the policies say.
+
+- Never judge tenant isolation from a query you ran as yourself: it would show all rows even if RLS were perfect,
+  and it cannot show a leak. Use the checks scripts instead.
+- The checks scripts verify row-level security **as the application roles**: a DO block grants you `app_runtime`,
+  `app_domain`, `app_bootstrap` and `app_authz` `WITH INHERIT FALSE` (only `SET ROLE`, none of their privileges),
+  becomes each of them with `SET ROLE`, counts what they can see with no request context, as a non-member, and (as
+  `app_runtime`) for a real ACTIVE member, then revokes the roles before it ends. Nothing else is written.
+- Those rows say `NO DATA` until there is something to test with (no rows yet, or no ACTIVE member). Run the checks
+  again after the M2 founder verification, once a practice exists: then every row must say `PASS`.
+- If you ever grant yourself an application role by hand, revoke it again: `m1_checks.sql` check 17 and
+  `m2_checks.sql` check 14 fail while `postgres` is a member of one.
+- Treat query results as customer data: never paste them into a PR, an issue or a chat.
+
 ## 1. First-time database setup (M1 + M2)
 
 1. Supabase dashboard → your staging project (region `ap-south-1`, Mumbai) → **SQL Editor**.
@@ -19,7 +37,8 @@ nearby, and tell me what you saw so I can fix this file.
      `WARNING: no privileges were granted`. Send me that error too.
    - No application role reads `auth.users`; nothing is granted on schema `auth`.
 3. Run `supabase/seed/ceremony_types.sql`.
-4. Run every `supabase/checks/m<N>_checks.sql` for the milestones applied so far. Every row must say `PASS`.
+4. Run every `supabase/checks/m<N>_checks.sql` for the milestones applied so far. Every row must say `PASS`, except
+   that the row-level-security rows say `NO DATA` while there is nothing to test with yet (§0).
 
 ## 2. Give `app_runtime` a login (M2)
 
