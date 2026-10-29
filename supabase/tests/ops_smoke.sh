@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Runs the operator scripts in supabase/ops against the throwaway database as pd_migrator (like postgres on Supabase:
-# no SUPERUSER, no BYPASSRLS), with their placeholder values replaced. Called by run.sh; prints ok/not ok lines.
+# Runs the operator scripts in supabase/ops against the throwaway database logged in as pd_migrator (like postgres in
+# the Supabase SQL editor: no SUPERUSER, BYPASSRLS), with their placeholder values replaced. Called by run.sh, which
+# exports DB and MIGRATOR_PASSWORD; prints ok/not ok lines.
 # The functions themselves are tested in 03_ops_members.sql; this checks the script files as the founder runs them.
 set -uo pipefail
-DB=pd_test
+DB="${DB:-pd_test}"
 n=0
 fails=0
 out=""
@@ -16,7 +17,7 @@ run_ops() { # run_ops <script> <member e-mail> [role]; leaves the script's outpu
              -e "s/'Practice name'/'Ops Practice'/" \
              -e "s/member@example.com/$2/" \
              -e "s/'STAFF'\( *-- ADMIN\)/'${3:-STAFF}'\1/" "supabase/ops/$1" |
-         PGOPTIONS="-c role=pd_migrator" psql -X -q -At -v ON_ERROR_STOP=1 -d "$DB" 2>&1)"
+         PGUSER=pd_migrator PGPASSWORD="$MIGRATOR_PASSWORD" psql -X -q -At -v ON_ERROR_STOP=1 -d "$DB" 2>&1)"
 }
 
 psql -X -q -v ON_ERROR_STOP=1 -d "$DB" <<'SQL'
