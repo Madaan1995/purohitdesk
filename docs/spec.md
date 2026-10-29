@@ -725,8 +725,9 @@ Every tenant table that other tenant tables reference has `UNIQUE (id, org_id)`,
 | `app_bootstrap` | no | `ensure_current_user`, `bootstrap_practice` | insert rows owned by the actor (`linked_via = 'BOOTSTRAP'`) | link other people; touch existing organizations |
 | `app_freebusy` | no | `_priest_conflicts`, `priest_busy` | column-level SELECT on `id, org_id, priest_profile_id, booking_id, kind, status, span, buffer_span` of ACTIVE reservations in any org (no notes, creators); its two functions first verify the priest is linked to the caller's org and return other orgs' spans without ids | read bookings, customers, or anything else |
 | `app_maintenance` | no | `run_retention` | purge transcripts, time out stuck voice jobs, delete expired idempotency keys and old audit rows | anything else; it is executable only by the migration owner (Supabase Cron) |
+| `app_operator` (founder review, 29 Oct 2026) | no | `ops_add_member`, `ops_revoke_member` | add, re-role or revoke a non-owner membership (its policies admit no OWNER row); read organization ids/names/status and app user ids/status | anything else; executable only by the migration owner (operator scripts in `supabase/ops/`) |
 
-Every SECURITY DEFINER function pins `search_path = ''` and schema-qualifies every name (gate). EXECUTE is revoked from PUBLIC on every function (gate).
+Every SECURITY DEFINER function pins `search_path = ''` and schema-qualifies every name (gate). EXECUTE is revoked from PUBLIC on every function (gate). The migration owner (Supabase: `postgres`) is a member of an application role only inside the migration that hands functions to it, and revokes that membership before the migration ends; a GRANT on another role's object is checked by a DO block that raises if it granted nothing (founder review, 29 Oct 2026).
 
 ## 8. Row-level security
 
@@ -1059,7 +1060,7 @@ In-app notifications (agenda badges: "3 bookings need a time", "balance due") ar
 | Identity provider | Supabase Auth. P0: Google sign-in. Phone OTP only after confirming SMS provider, India DLT registration and cost (VERIFY). |
 | Token handling | The PWA holds the Supabase session (httpOnly cookie via `@supabase/ssr`). Every API request is verified server-side (signature via JWKS, `exp`, `aud`); the actor id is the token `sub`. |
 | Tenant selection | `X-Tenant-ID` header per request; never stored in the token. Membership is re-checked by the database on every statement, so revocation is immediate (EXECUTED `02`). |
-| First login | `GET /session` → `app.ensure_current_user` (owner `app_bootstrap`) creates `app_users` only if the actor exists in `auth.users`. |
+| First login | `GET /session` → `app.ensure_current_user` (owner `app_bootstrap`) creates `app_users` only if the actor exists in `auth.users`, proven by the `auth_user_id` foreign key: no application role reads `auth.users`. The display name is passed in from the verified token's `user_metadata` as untrusted display text (founder review, 29 Oct 2026). |
 | Sessions | Supabase defaults (1 h access token, refresh rotation); "sign out everywhere" via Supabase. |
 | Account deletion | Operator runbook (`supabase/ops/runbook.md`): export on request → delete the Supabase auth user → `app_users.auth_user_id` becomes NULL (FK `ON DELETE SET NULL`), status DELETED; history stays consistent and the identity can no longer sign in (EXECUTED `08`). A SOLO owner's organization is closed and its customers erased on request. |
 
@@ -1108,6 +1109,7 @@ Notes: MEMBER_MANAGE has no P0 endpoint (invitations are P1). PRIEST acts on boo
 | --- | --- | --- | --- |
 | Create the first organization before any membership exists | B1: needed BYPASSRLS | `app_bootstrap` owns `bootstrap_practice`; policies let it insert only rows `created_by = actor`, OWNER membership for itself, BOOTSTRAP link to its own profile; ≤ 3 orgs per user | `01` (11) |
 | Detect another organization's bookings of the same priest | B2/B3 | `app_freebusy` owns `_priest_conflicts`/`priest_busy`; verifies the priest is linked to the caller's org; returns spans only, ids only for own org | `04` |
+| Members with other roles in P0 (no UI) | operator scripts lifted FORCE RLS (founder review, 29 Oct 2026) | `app_operator` owns `ops_add_member`/`ops_revoke_member`, executable only by the migration owner; its policies admit no OWNER row; scripts are one call each and print ids only | M2 `03_ops_members` |
 | Retention purge | B7 (blocked by immutability) | `app_maintenance` owns `run_retention`; its policies admit voice rows older than 10 minutes, expired idempotency keys and audit rows older than 12 months, and the function's WHERE clauses apply the 7-day/24-hour limits; executable only by the migration owner (Supabase Cron) | `08`, `02` (runtime cannot run it) |
 | Background worker (P1) | B8 (no role) | Pattern: `app_worker` NOLOGIN owner of one dispatch function, role-scoped policies on `outbox` | DESIGN |
 | Public pages (P1) | A: undefined | Pattern: `app_public` owns `get_public_receipt(token)`; tokens are 32 random bytes, stored as SHA-256, expire (30 days), revocable, scoped to one booking; returns a minimal projection (no phone, no address beyond locality) | DESIGN |
@@ -1122,6 +1124,7 @@ Gates that keep this true (EXECUTED, `tools/check_consistency.py`): no app role 
 | Route handler bug writes without a check | Login role has no DML; commands check permissions | EXECUTED gate + `02` |
 | SQL injection | Tagged-template parameters only; no string-built SQL in TS; definer functions use `format(%I/%L)` only in migrations | DESIGN + review |
 | Stolen JWT | Short expiry; revocation by membership; device sign-out | DESIGN |
+| Cross-site request forgery with the session cookie | Cookie-authenticated writes and sign-out need `Sec-Fetch-Site: same-origin` (or a matching `Origin`); bodies must be `application/json`; `SameSite=Lax` cookies (founder review, 29 Oct 2026) | unit + integration tests (M2) |
 | Connection-pool context leak | `set_config(…, true)` inside one transaction; missing context ⇒ no rows / PD401 | EXECUTED `02`; pooler behaviour VERIFY (T-04) |
 | Priest linked without consent | No INSERT on links for runtime; BOOTSTRAP only via bootstrap role | EXECUTED `02` |
 | Double booking via race | Exclusion constraint + advisory locks | EXECUTED `concurrency.sh` |
