@@ -8,7 +8,8 @@ WITH app_tables AS (
 app_roles AS (
   SELECT r.*
   FROM pg_catalog.pg_roles r
-  WHERE r.rolname IN ('app_runtime', 'app_domain', 'app_authz', 'app_bootstrap', 'app_freebusy', 'app_maintenance')
+  WHERE r.rolname IN ('app_runtime', 'app_domain', 'app_authz', 'app_bootstrap', 'app_freebusy', 'app_maintenance',
+                      'app_operator')
 ),
 app_funcs AS (
   SELECT p.oid, p.proname, p.prosecdef, p.proconfig, p.proowner, p.proacl
@@ -27,8 +28,8 @@ checks (n, check_name, ok) AS (
   (2, 'M1 tables exist (7)',
     (SELECT count(*) FROM app_tables WHERE relname IN ('role_permissions', 'app_users', 'organizations',
       'org_members', 'priest_profiles', 'organization_priests', 'ceremony_types')) = 7),
-  (3, 'six application roles exist',
-    (SELECT count(*) FROM app_roles) = 6),
+  (3, 'seven application roles exist',
+    (SELECT count(*) FROM app_roles) = 7),
   (4, 'no application role is SUPERUSER or BYPASSRLS',
     NOT EXISTS (SELECT 1 FROM app_roles WHERE rolsuper OR rolbypassrls)),
   (5, 'every application role except app_runtime is NOLOGIN',

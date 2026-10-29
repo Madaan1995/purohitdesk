@@ -113,6 +113,7 @@ Punjabi names stay NULL until P1.
 - [x] Harness gives `pd_migrator` auth access without GRANT OPTION, as Supabase gives `postgres`.
 - [x] Ownership hand-over leaves the migration user in no application role: each migration grants itself the role it hands functions to and revokes it before it ends; `m1_checks.sql` check 17 and a DO block verify it.
 - [x] Every GRANT that could silently grant nothing (EXECUTE on functions owned by another role) is followed by a DO block that raises if the privilege is not in the ACL.
+- [x] Seventh role `app_operator` (NOLOGIN) created with the others; it owns the M2 operator commands.
 - [ ] CI and harness Postgres major version = staging's: **still open** (staging version not known yet); both stay on 16 until it is.
 
 **Build checklist**
