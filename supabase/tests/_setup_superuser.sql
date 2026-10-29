@@ -10,8 +10,10 @@ CREATE TABLE auth.users (
   raw_user_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at         timestamptz NOT NULL DEFAULT now()
 );
-GRANT USAGE ON SCHEMA auth TO pd_migrator WITH GRANT OPTION;
-GRANT SELECT, REFERENCES ON auth.users TO pd_migrator WITH GRANT OPTION;
+-- Like Supabase's postgres: it may use auth.users (SELECT, and REFERENCES for the app_users FK) but holds no
+-- GRANT OPTION, so a migration's GRANT on auth objects only raises a WARNING and grants nothing.
+GRANT USAGE ON SCHEMA auth TO pd_migrator;
+GRANT SELECT, REFERENCES ON auth.users TO pd_migrator;
 
 -- Supabase API roles, with a worst-case default: everything pd_migrator creates is granted to them.
 -- The migrations must revoke it (the Data API stays off for schema app).
