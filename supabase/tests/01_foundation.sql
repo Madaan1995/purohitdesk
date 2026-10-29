@@ -4,7 +4,7 @@ BEGIN;
 SELECT test.ok(EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'app'), 'schema app exists');
 
 SELECT test.is((SELECT count(*) FROM pg_roles WHERE rolname IN ('app_runtime', 'app_domain', 'app_authz',
-  'app_bootstrap', 'app_freebusy', 'app_maintenance')), 6::bigint, 'six application roles exist');
+  'app_bootstrap', 'app_freebusy', 'app_maintenance', 'app_operator')), 7::bigint, 'seven application roles exist');
 
 SELECT test.ok(NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname LIKE 'app\_%' AND (rolsuper OR rolbypassrls)),
   'no application role has BYPASSRLS or SUPERUSER');
@@ -28,6 +28,18 @@ SELECT test.ok(NOT has_schema_privilege('anon', 'app', 'USAGE')
            AND NOT has_schema_privilege('authenticated', 'app', 'USAGE')
            AND NOT has_schema_privilege('service_role', 'app', 'USAGE'),
   'Supabase API roles cannot use schema app (despite default privileges granting it)');
+
+-- Ownership hand-over leaves the migration user (Supabase: postgres) without any application role.
+SELECT test.ok(NOT EXISTS (
+  SELECT 1 FROM pg_roles r WHERE r.rolname LIKE 'app\_%'
+    AND (pg_has_role('pd_migrator', r.oid, 'USAGE') OR pg_has_role('pd_migrator', r.oid, 'SET'))),
+  'the migration user holds no application role after the ownership hand-over');
+SET ROLE pd_migrator;
+SELECT test.throws('ALTER FUNCTION app.assert_permission(text) OWNER TO pd_migrator', '42501',
+  'the migration user cannot take back a function owned by app_authz');
+SELECT test.throws($$SELECT app.assert_permission('ORG_READ')$$, '42501',
+  'the migration user does not inherit app_authz''s EXECUTE rights');
+RESET ROLE;
 
 -- Context helpers
 SELECT test.ctx(NULL, NULL);

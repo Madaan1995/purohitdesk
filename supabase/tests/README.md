@@ -11,7 +11,8 @@ What `run.sh` does:
 
 1. Resets `pd_test` and creates `pd_migrator` (CREATEROLE, not SUPERUSER, not BYPASSRLS), which behaves like
    Supabase's `postgres` role.
-2. `_setup_superuser.sql` stubs the Supabase objects the migrations rely on: `auth.users`, and the `anon`,
+2. `_setup_superuser.sql` stubs the Supabase objects the migrations rely on: `auth.users` (which `pd_migrator` may
+   read and reference, without GRANT OPTION, like Supabase's `postgres`), and the `anon`,
    `authenticated` and `service_role` roles with worst-case default privileges (the migrations must revoke them).
 3. Applies `supabase/migrations/*.sql` in filename order as `pd_migrator`, one transaction per file, stopping at the
    first error.

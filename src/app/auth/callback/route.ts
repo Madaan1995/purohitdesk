@@ -14,9 +14,9 @@ export async function GET(req: Request) {
   try {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error || !data.session) throw new Error('exchange failed');
-    const actorId = await verifyAccessToken(data.session.access_token, authConfig());
+    const identity = await verifyAccessToken(data.session.access_token, authConfig());
     const store = await cookies();
-    const session = await loadSession(actorId, store.get('NEXT_LOCALE')?.value ?? null);
+    const session = await loadSession(identity, store.get('NEXT_LOCALE')?.value ?? null);
     store.set('NEXT_LOCALE', session.user.preferred_locale, { path: '/', maxAge: 31536000, sameSite: 'lax' });
   } catch {
     return NextResponse.redirect(new URL('/sign-in?error=1', url.origin), 303);

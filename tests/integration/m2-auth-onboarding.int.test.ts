@@ -25,8 +25,8 @@ describe.skipIf(!enabled)('M2 API against a throwaway database', () => {
     holder.config = await makeAuthConfig();
     owner = await createAuthUser(admin, 'Ramesh Sharma');
     other = await createAuthUser(admin, 'Second Pandit');
-    ownerToken = await tokenFor(owner);
-    otherToken = await tokenFor(other);
+    ownerToken = await tokenFor(owner, 'Ramesh Sharma');
+    otherToken = await tokenFor(other, 'Second Pandit');
     ceremonyIds = (await admin`SELECT id FROM app.ceremony_types WHERE slug IN ('havan', 'vivah') ORDER BY slug`).map(
       (r) => r.id as string,
     );
@@ -59,6 +59,18 @@ describe.skipIf(!enabled)('M2 API against a throwaway database', () => {
       user: { id: owner, display_name: 'Ramesh Sharma', preferred_locale: 'en' },
       memberships: [],
     });
+  });
+
+  it('onboarding refuses a body that is not sent as application/json', async () => {
+    const res = await postPractice(
+      new Request('http://localhost/api/v1/onboarding/practice', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${ownerToken}`, 'idempotency-key': 'text-plain-01', 'content-type': 'text/plain' },
+        body: JSON.stringify({ name: 'X', ceremony_type_ids: ceremonyIds }),
+      }),
+    );
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toMatchObject({ code: 'VALIDATION_FAILED', reason: 'JSON_REQUIRED' });
   });
 
   it('onboarding requires an Idempotency-Key', async () => {

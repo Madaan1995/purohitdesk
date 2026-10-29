@@ -9,9 +9,15 @@ nearby, and tell me what you saw so I can fix this file.
 1. Supabase dashboard → your staging project (region `ap-south-1`, Mumbai) → **SQL Editor**.
 2. Run each file in `supabase/migrations/` **in filename order**, one file per run, the whole file at once, and
    only the ones not applied yet: M1 `20261028200000_m1_foundation.sql`, `20261028200100_m1_identity_tenancy.sql`;
-   M2 `20261028210000_m2_auth_onboarding.sql`; M4 `20261028220000_m4_customers.sql`. If any statement fails (most likely a `CREATE ROLE`, `GRANT … TO
-   CURRENT_USER`, `ALTER FUNCTION … OWNER TO` or `GRANT … ON auth.users` — spec risk U1), stop and send me the exact
-   error. Do not work around it with BYPASSRLS or the service-role key.
+   M2 `20261028210000_m2_auth_onboarding.sql`; M4 `20261028220000_m4_customers.sql`. If any statement fails (most
+   likely a `CREATE ROLE`, `GRANT <role> TO CURRENT_USER`, `ALTER FUNCTION … OWNER TO` or `REVOKE <role> FROM
+   CURRENT_USER` — spec risk U1), stop and send me the exact error. Do not work around it with BYPASSRLS or the
+   service-role key.
+   - Each migration makes `postgres` a member of the roles it hands functions to and removes that membership again
+     before it ends; `postgres` is never left a member of an application role. A migration also stops with an error
+     (and applies nothing) if a `GRANT` silently granted nothing: the SQL editor would otherwise only show a
+     `WARNING: no privileges were granted`. Send me that error too.
+   - No application role reads `auth.users`; nothing is granted on schema `auth`.
 3. Run `supabase/seed/ceremony_types.sql`.
 4. Run every `supabase/checks/m<N>_checks.sql` for the milestones applied so far. Every row must say `PASS`.
 
@@ -99,12 +105,23 @@ Redeploy the preview after adding them.
 
 ## 8. Members with other roles (staging only; P0 has no member-management UI)
 
-The person must have signed in to PurohitDesk once.
+The person must have signed in to PurohitDesk once. Each script is one call to an operator command
+(`app.ops_add_member` / `app.ops_revoke_member`, owned by the NOLOGIN role `app_operator`). Only `postgres` may run
+them; the API's `app_runtime` cannot. They never touch the practice's OWNER and never change row-level security.
 
-- Add or change a member: open `supabase/ops/add_member.sql`, edit the four values at the top (owner e-mail,
-  practice name exactly as on the home page, member e-mail, role `ADMIN`/`STAFF`/`READ_ONLY`), run the whole file.
+- Add or change a member: open `supabase/ops/add_member.sql`, edit the four values (owner e-mail, practice name
+  exactly as on the home page, member e-mail, role `ADMIN`/`STAFF`/`READ_ONLY`), run the whole file.
 - Revoke: `supabase/ops/revoke_member.sql`, three values, run the whole file. The member loses access on their very
   next request.
-- Both scripts end with a query that must show `force_rls_restored = true` for `organizations` and `org_members`.
-  They temporarily lift FORCE ROW LEVEL SECURITY inside their own transaction (only the table owner can) and roll
-  everything back on any error.
+- The result is one row like `{"org_id": "…", "user_id": "…", "role": "STAFF", "status": "ACTIVE"}`: ids, role and
+  status only, never names or e-mails. Clear the e-mails from the editor afterwards.
+- If it fails, the error names the reason and nothing changes:
+
+  | Error | Meaning |
+  | --- | --- |
+  | `PRACTICE_NOT_FOUND` | No ACTIVE practice with that exact name whose OWNER has that e-mail. |
+  | `PRACTICE_NAME_AMBIGUOUS` | That owner has two ACTIVE practices with this name; rename one in the app first. |
+  | `MEMBER_NOT_SIGNED_IN` | No PurohitDesk user for that e-mail: they must sign in once (or the account was deleted). |
+  | `ROLE_NOT_ALLOWED` | The role is not `ADMIN`, `STAFF` or `READ_ONLY` (OWNER is never given; PRIEST needs a priest link). |
+  | `OWNER_UNTOUCHABLE` | That person is the practice's OWNER; the scripts never change or revoke the owner. |
+  | `NOT_AN_ACTIVE_MEMBER` | (revoke) That person has no ACTIVE membership in this practice. |
