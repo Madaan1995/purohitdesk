@@ -45,8 +45,15 @@ function logBug(requestId: string, code: string): void {
   console.error(JSON.stringify({ level: 'error', request_id: requestId, code }));
 }
 
-/** Reads a JSON body and validates it; unknown fields are rejected by strict schemas. */
+/**
+ * Reads a JSON body and validates it; unknown fields are rejected by strict schemas. The body must be sent as
+ * `Content-Type: application/json`, which an HTML form cannot send (CSRF defence in depth).
+ */
 export async function parseBody<T extends z.ZodType>(req: Request, schema: T): Promise<z.infer<T>> {
+  const mediaType = (req.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+  if (mediaType !== 'application/json') {
+    throw new DomainError(apiError('VALIDATION_FAILED', { reason: 'JSON_REQUIRED', details: { field: 'Content-Type' } }));
+  }
   let raw: unknown;
   try {
     raw = await req.json();

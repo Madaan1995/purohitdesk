@@ -61,6 +61,18 @@ describe.skipIf(!enabled)('M2 API against a throwaway database', () => {
     });
   });
 
+  it('onboarding refuses a body that is not sent as application/json', async () => {
+    const res = await postPractice(
+      new Request('http://localhost/api/v1/onboarding/practice', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${ownerToken}`, 'idempotency-key': 'text-plain-01', 'content-type': 'text/plain' },
+        body: JSON.stringify({ name: 'X', ceremony_type_ids: ceremonyIds }),
+      }),
+    );
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toMatchObject({ code: 'VALIDATION_FAILED', reason: 'JSON_REQUIRED' });
+  });
+
   it('onboarding requires an Idempotency-Key', async () => {
     const res = await postPractice(
       request('/onboarding/practice', { method: 'POST', token: ownerToken, body: { name: 'X', ceremony_type_ids: ceremonyIds } }),
