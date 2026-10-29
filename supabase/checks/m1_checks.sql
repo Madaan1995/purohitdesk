@@ -71,7 +71,14 @@ checks (n, check_name, ok) AS (
   (15, 'ceremony_types seeded (20 rows)',
     (SELECT count(*) FROM app.ceremony_types) = 20),
   (16, 'time zones: Asia/Kolkata accepted, IST rejected',
-    app.is_valid_timezone('Asia/Kolkata') AND NOT app.is_valid_timezone('IST'))
+    app.is_valid_timezone('Asia/Kolkata') AND NOT app.is_valid_timezone('IST')),
+  (17, 'the migration user (you) is not a member of any application role',
+    (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname = CURRENT_USER)
+    OR NOT EXISTS (SELECT 1 FROM app_roles r
+                   WHERE pg_catalog.pg_has_role(CURRENT_USER, r.oid, 'USAGE')
+                      OR CASE WHEN pg_catalog.current_setting('server_version_num')::int >= 160000
+                              THEN pg_catalog.pg_has_role(CURRENT_USER, r.oid, 'SET')
+                              ELSE pg_catalog.pg_has_role(CURRENT_USER, r.oid, 'MEMBER') END))
 )
 SELECT n, check_name AS "check", CASE WHEN ok THEN 'PASS' ELSE 'FAIL' END AS result
 FROM checks

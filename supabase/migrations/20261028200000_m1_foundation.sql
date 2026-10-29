@@ -18,12 +18,9 @@ CREATE ROLE app_bootstrap   NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATER
 CREATE ROLE app_freebusy    NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
 CREATE ROLE app_maintenance NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
 
--- The migration user must be a member of a role to hand function ownership to it (spec U1).
-GRANT app_domain      TO CURRENT_USER;
-GRANT app_authz       TO CURRENT_USER;
-GRANT app_bootstrap   TO CURRENT_USER;
-GRANT app_freebusy    TO CURRENT_USER;
-GRANT app_maintenance TO CURRENT_USER;
+-- The migration user is never left a member of an application role. A migration that hands function ownership to
+-- a role grants that role to CURRENT_USER, hands over, and revokes it again before it ends (spec U1; PostgreSQL
+-- requires membership in the new owner).
 
 GRANT USAGE ON SCHEMA app TO app_runtime, app_domain, app_authz, app_bootstrap, app_freebusy, app_maintenance;
 
