@@ -2,12 +2,11 @@ import { DomainError } from '@/db';
 import { apiError } from '@/domain/errors';
 import { isValidIdempotencyKey } from '@/domain/idempotency';
 import { authConfig } from './auth-config';
-import { verifyAccessToken } from './auth';
+import { verifyAccessToken, type Identity } from './auth';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export interface RequestContext {
-  actorId: string;
+export interface RequestContext extends Identity {
   tenantId: string | null;
   idempotencyKey: string | null;
 }
@@ -31,7 +30,7 @@ export async function requireContext(
     const { sessionAccessToken } = await import('./supabase');
     token = await sessionAccessToken();
   }
-  const actorId = await verifyAccessToken(token, authConfig());
+  const { actorId, displayName } = await verifyAccessToken(token, authConfig());
 
   let tenantId: string | null = null;
   if (opts.tenant) {
@@ -55,5 +54,5 @@ export async function requireContext(
     }
   }
 
-  return { actorId, tenantId, idempotencyKey };
+  return { actorId, displayName, tenantId, idempotencyKey };
 }

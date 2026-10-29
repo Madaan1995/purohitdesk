@@ -5,5 +5,5 @@ import { loadSession } from '@/app/_lib/session';
 
 export const GET = route(async (req: Request) => {
   const ctx = await requireContext(req);
-  return json(await loadSession(ctx.actorId, readCookie(req, 'NEXT_LOCALE')));
+  return json(await loadSession(ctx, readCookie(req, 'NEXT_LOCALE')));
 });

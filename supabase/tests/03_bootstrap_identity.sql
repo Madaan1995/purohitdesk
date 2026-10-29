@@ -3,9 +3,12 @@
 BEGIN;
 
 -- Fixtures (superuser): Supabase auth users only; app users are created by ensure_current_user.
+-- raw_user_meta_data differs from the name the API passes in: it must never be read.
 INSERT INTO auth.users (id, email, raw_user_meta_data) VALUES
-  ('c1000000-0000-0000-0000-000000000001', 'ramesh@example.test', '{"full_name": "  Ramesh Sharma  "}'),
+  ('c1000000-0000-0000-0000-000000000001', 'ramesh@example.test', '{"full_name": "Not Read From auth.users"}'),
   ('c2000000-0000-0000-0000-000000000002', 'second@example.test', '{}'),
+  ('c3000000-0000-0000-0000-000000000003', 'third@example.test', '{}'),
+  ('c4000000-0000-0000-0000-000000000004', 'fourth@example.test', '{}'),
   ('cd000000-0000-0000-0000-00000000000d', 'detached@example.test', '{}');
 INSERT INTO app.app_users (id, auth_user_id) VALUES
   ('cd000000-0000-0000-0000-00000000000d', 'cd000000-0000-0000-0000-00000000000d');
@@ -15,21 +18,36 @@ SET ROLE app_runtime;
 
 -- ---------------------------------------------------------------- first login
 SELECT test.ctx('c1000000-0000-0000-0000-000000000001');
-SELECT app.ensure_current_user('en') AS u1 \gset
+SELECT app.ensure_current_user('en', '  Ramesh Sharma  ') AS u1 \gset
 SELECT test.is(:'u1'::jsonb, '{"id": "c1000000-0000-0000-0000-000000000001", "display_name": "Ramesh Sharma",
-  "preferred_locale": "en"}'::jsonb, 'first login creates app user (name from Google, chosen locale)');
-SELECT test.is(app.ensure_current_user('hi') ->> 'preferred_locale', 'en',
-  'second login returns the existing user unchanged');
+  "preferred_locale": "en"}'::jsonb,
+  'first login creates app user (name passed in from the verified token, trimmed; chosen locale)');
+SELECT test.is(app.ensure_current_user('hi', 'Someone Else'),
+  '{"id": "c1000000-0000-0000-0000-000000000001", "display_name": "Ramesh Sharma", "preferred_locale": "en"}'::jsonb,
+  'second login returns the existing user unchanged (name and locale)');
+
+-- The display name is untrusted text: cleaned, capped, and optional.
+SELECT test.ctx('c3000000-0000-0000-0000-000000000003');
+SELECT test.is(app.ensure_current_user(NULL, E'Ram\n\tesh\u202E  Sharma\u0007') ->> 'display_name', 'Ram esh Sharma',
+  'control and bidi-override characters in the token name are replaced, spaces collapsed');
+SELECT test.ctx('c4000000-0000-0000-0000-000000000004');
+SELECT test.is(char_length(app.ensure_current_user(NULL, repeat('x', 500)) ->> 'display_name'), 120,
+  'a long token name is cut to 120 characters');
+SELECT test.ctx('c2000000-0000-0000-0000-000000000002');
+SELECT test.is(app.ensure_current_user(NULL, E' \n ') -> 'display_name', 'null'::jsonb,
+  'a blank token name is stored as no name');
 
 SELECT test.ctx('c9000000-0000-0000-0000-000000000009');
-SELECT test.throws($$SELECT app.ensure_current_user(NULL)$$, 'PD401',
-  'an actor that is not a Supabase auth user cannot sign in', 'CONTEXT_MISSING');
+SELECT test.throws($$SELECT app.ensure_current_user(NULL, 'Ghost')$$, 'PD401',
+  'an actor that is not a Supabase auth user cannot sign in (foreign key, no read of auth.users)',
+  'CONTEXT_MISSING');
 SELECT test.throws($$SELECT app.bootstrap_practice('X', NULL, 'key-ghost-01', repeat('a', 64))$$, 'PD401',
   'an actor that is not a Supabase auth user cannot bootstrap', 'CONTEXT_MISSING');
 SELECT test.ctx(NULL);
-SELECT test.throws($$SELECT app.ensure_current_user(NULL)$$, 'PD401', 'missing actor: refused', 'CONTEXT_MISSING');
+SELECT test.throws($$SELECT app.ensure_current_user(NULL, NULL)$$, 'PD401', 'missing actor: refused',
+  'CONTEXT_MISSING');
 SELECT test.ctx('cd000000-0000-0000-0000-00000000000d');
-SELECT test.throws($$SELECT app.ensure_current_user(NULL)$$, 'PD401', 'deleted identity cannot sign back in',
+SELECT test.throws($$SELECT app.ensure_current_user(NULL, NULL)$$, 'PD401', 'deleted identity cannot sign back in',
   'CONTEXT_MISSING');
 
 -- ---------------------------------------------------------------- onboarding
@@ -95,7 +113,7 @@ SET ROLE app_runtime;
 
 -- ---------------------------------------------------------------- validation (second user)
 SELECT test.ctx('c2000000-0000-0000-0000-000000000002');
-SELECT test.is(app.ensure_current_user(NULL) ->> 'preferred_locale', 'hi', 'default language is Hindi');
+SELECT test.is(app.ensure_current_user(NULL, NULL) ->> 'preferred_locale', 'hi', 'default language is Hindi');
 SELECT test.throws($$SELECT app.bootstrap_practice('   ', (SELECT array_agg(id) FROM app.ceremony_types
   WHERE slug = 'havan'), 'validate-key-01', repeat('a', 64))$$, 'PD422', 'blank practice name rejected',
   'VALIDATION_FAILED');
@@ -146,6 +164,14 @@ SELECT test.throws($$INSERT INTO app.offerings (org_id, name_hi, name_en, durati
 SELECT test.throws($$UPDATE app.app_users SET preferred_locale = 'en'$$, '42501',
   'runtime cannot UPDATE its own user row directly');
 RESET ROLE;
+
+-- ---------------------------------------------------------------- no application role reads Supabase Auth
+SELECT test.ok(NOT EXISTS (
+  SELECT 1 FROM pg_roles r WHERE r.rolname LIKE 'app\_%'
+    AND (has_schema_privilege(r.oid, 'auth', 'USAGE')
+         OR has_table_privilege(r.oid, 'auth.users', 'SELECT')
+         OR has_any_column_privilege(r.oid, 'auth.users', 'SELECT'))),
+  'no application role can use schema auth or read auth.users');
 
 -- ---------------------------------------------------------------- app_bootstrap's policies only admit the actor's own rows
 SELECT id AS p1 FROM app.priest_profiles WHERE user_id = 'c1000000-0000-0000-0000-000000000001' \gset

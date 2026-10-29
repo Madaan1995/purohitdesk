@@ -7,7 +7,7 @@ SELECT test.is((
   FROM pg_proc p
   WHERE p.pronamespace = 'app'::regnamespace AND has_function_privilege('app_runtime', p.oid, 'EXECUTE')),
   'app.bootstrap_practice(text,uuid[],text,text), app.current_actor_id(), app.current_member_role(), '
-  'app.current_tenant_id(), app.ensure_current_user(text), app.is_active_member_of(uuid), '
+  'app.current_tenant_id(), app.ensure_current_user(text,text), app.is_active_member_of(uuid), '
   'app.update_my_profile(text,text)',
   'every function app_runtime may EXECUTE is an endpoint command or used by its RLS policies');
 

@@ -138,10 +138,6 @@ GRANT SELECT ON app.ceremony_types TO app_bootstrap;
 GRANT UPDATE (display_name, preferred_locale) ON app.app_users TO app_domain;
 GRANT SELECT, INSERT, UPDATE ON app.idempotency_keys TO app_domain, app_bootstrap;
 
--- First login reads the Supabase auth user (spec §08 §1, risk U1).
-GRANT USAGE ON SCHEMA auth TO app_bootstrap;
-GRANT SELECT (id, raw_user_meta_data) ON auth.users TO app_bootstrap;
-
 -- ---------------------------------------------------------------------------
 -- Internal helpers (SECURITY INVOKER: they run with the privileges of the calling command's owner)
 -- ---------------------------------------------------------------------------
@@ -206,15 +202,18 @@ $$;
 
 -- ---------------------------------------------------------------------------
 -- ensure_current_user (owner app_bootstrap): first login creates the app user.
+-- No application role reads auth.users: the foreign key app_users.auth_user_id -> auth.users(id) proves the actor is
+-- a Supabase auth user (the check runs with the rights of auth.users' owner). p_display_name comes from the verified
+-- JWT's user_metadata; it is untrusted display text, cleaned here and never used for authorization.
 -- ---------------------------------------------------------------------------
-CREATE FUNCTION app.ensure_current_user(p_locale text DEFAULT NULL) RETURNS jsonb
+CREATE FUNCTION app.ensure_current_user(p_locale text DEFAULT NULL, p_display_name text DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
   v_actor uuid := app.current_actor_id();
   v_user  app.app_users%ROWTYPE;
-  v_meta  jsonb;
+  v_name  text;
 BEGIN
   IF v_actor IS NULL THEN
     PERFORM app.raise_error('PD401', 'CONTEXT_MISSING');
@@ -222,17 +221,17 @@ BEGIN
 
   SELECT * INTO v_user FROM app.app_users u WHERE u.id = v_actor;
   IF NOT FOUND THEN
-    SELECT u.raw_user_meta_data INTO v_meta FROM auth.users u WHERE u.id = v_actor;
-    IF NOT FOUND THEN
+    -- Control and bidi-override characters become spaces; runs of space collapse; at most 120 characters.
+    v_name := nullif(btrim(left(btrim(pg_catalog.regexp_replace(coalesce(p_display_name, ''),
+                '[[:cntrl:][:space:]\u200B-\u200F\u202A-\u202E\u2066-\u2069]+', ' ', 'g')), 120)), '');
+    BEGIN
+      INSERT INTO app.app_users (id, auth_user_id, display_name, preferred_locale)
+      VALUES (v_actor, v_actor, v_name, CASE WHEN p_locale IN ('hi', 'en') THEN p_locale ELSE 'hi' END)
+      ON CONFLICT (id) DO NOTHING;
+    EXCEPTION WHEN foreign_key_violation THEN
+      -- Not a Supabase auth user (spec §08 §1).
       PERFORM app.raise_error('PD401', 'CONTEXT_MISSING');
-    END IF;
-    INSERT INTO app.app_users (id, auth_user_id, display_name, preferred_locale)
-    VALUES (
-      v_actor,
-      v_actor,
-      nullif(btrim(left(btrim(coalesce(v_meta ->> 'full_name', v_meta ->> 'name', '')), 120)), ''),
-      CASE WHEN p_locale IN ('hi', 'en') THEN p_locale ELSE 'hi' END)
-    ON CONFLICT (id) DO NOTHING;
+    END;
     SELECT * INTO v_user FROM app.app_users u WHERE u.id = v_actor;
   END IF;
 
@@ -388,10 +387,14 @@ END
 $$;
 
 -- ---------------------------------------------------------------------------
--- Ownership hand-over (temporary CREATE on the schema, spec defect #2) and EXECUTE grants
+-- Ownership hand-over (temporary CREATE on the schema, spec defect #2) and EXECUTE grants.
+-- The migration user is a member of the function-owning roles only until the end of this file: the hand-over and the
+-- schema-wide REVOKE ... FROM PUBLIC need the owners' rights (app_authz owns the M1 helpers).
 -- ---------------------------------------------------------------------------
+GRANT app_authz, app_bootstrap, app_domain TO CURRENT_USER;
+
 GRANT CREATE ON SCHEMA app TO app_bootstrap, app_domain;
-ALTER FUNCTION app.ensure_current_user(text) OWNER TO app_bootstrap;
+ALTER FUNCTION app.ensure_current_user(text, text) OWNER TO app_bootstrap;
 ALTER FUNCTION app.bootstrap_practice(text, uuid[], text, text) OWNER TO app_bootstrap;
 ALTER FUNCTION app.update_my_profile(text, text) OWNER TO app_domain;
 REVOKE CREATE ON SCHEMA app FROM app_bootstrap, app_domain;
@@ -402,10 +405,34 @@ GRANT EXECUTE ON FUNCTION app._idem_begin(text, text, text), app._idem_finish(te
   TO app_domain, app_bootstrap;
 GRANT EXECUTE ON FUNCTION app._slugify(text) TO app_bootstrap;
 GRANT EXECUTE ON FUNCTION
-  app.ensure_current_user(text),
+  app.ensure_current_user(text, text),
   app.update_my_profile(text, text),
   app.bootstrap_practice(text, uuid[], text, text)
   TO app_runtime;
+
+-- These functions are owned by app_bootstrap and app_domain. A GRANT by a user without the owner's
+-- rights only warns and grants nothing, so check that every EXECUTE grant above is really in the ACL.
+DO $$
+DECLARE
+  v record;
+BEGIN
+  FOR v IN
+    SELECT x.fn, x.grantee
+    FROM (VALUES
+      ('app.ensure_current_user(text,text)', 'app_runtime'),
+      ('app.update_my_profile(text,text)', 'app_runtime'),
+      ('app.bootstrap_practice(text,uuid[],text,text)', 'app_runtime')
+    ) AS x (fn, grantee)
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) a
+      WHERE p.oid = v.fn::regprocedure AND a.grantee = v.grantee::regrole AND a.privilege_type = 'EXECUTE'
+    ) THEN
+      RAISE EXCEPTION 'GRANT EXECUTE ON FUNCTION % TO % did not take effect', v.fn, v.grantee;
+    END IF;
+  END LOOP;
+END
+$$;
 
 DO $$
 DECLARE
@@ -416,6 +443,33 @@ BEGIN
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL TABLES IN SCHEMA app FROM %I', r);
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA app FROM %I', r);
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA app FROM %I', r);
+    END IF;
+  END LOOP;
+END
+$$;
+
+-- ---------------------------------------------------------------------------
+-- End of the hand-over: the migration user keeps no application role's privileges (as after M1).
+-- ---------------------------------------------------------------------------
+REVOKE app_authz, app_bootstrap, app_domain FROM CURRENT_USER;
+
+DO $$
+DECLARE
+  r     text;
+  v_set boolean;
+BEGIN
+  IF (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname = CURRENT_USER) THEN
+    RETURN;
+  END IF;
+  FOREACH r IN ARRAY ARRAY['app_runtime', 'app_domain', 'app_authz', 'app_bootstrap', 'app_freebusy',
+                           'app_maintenance', 'app_operator'] LOOP
+    IF pg_catalog.current_setting('server_version_num')::int >= 160000 THEN
+      v_set := pg_catalog.pg_has_role(CURRENT_USER, r, 'SET');
+    ELSE
+      v_set := pg_catalog.pg_has_role(CURRENT_USER, r, 'MEMBER');
+    END IF;
+    IF v_set OR pg_catalog.pg_has_role(CURRENT_USER, r, 'USAGE') THEN
+      RAISE EXCEPTION 'migration user % is still a member of %', CURRENT_USER, r;
     END IF;
   END LOOP;
 END

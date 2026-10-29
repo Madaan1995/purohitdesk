@@ -25,8 +25,8 @@ describe.skipIf(!enabled)('M2 API against a throwaway database', () => {
     holder.config = await makeAuthConfig();
     owner = await createAuthUser(admin, 'Ramesh Sharma');
     other = await createAuthUser(admin, 'Second Pandit');
-    ownerToken = await tokenFor(owner);
-    otherToken = await tokenFor(other);
+    ownerToken = await tokenFor(owner, 'Ramesh Sharma');
+    otherToken = await tokenFor(other, 'Second Pandit');
     ceremonyIds = (await admin`SELECT id FROM app.ceremony_types WHERE slug IN ('havan', 'vivah') ORDER BY slug`).map(
       (r) => r.id as string,
     );

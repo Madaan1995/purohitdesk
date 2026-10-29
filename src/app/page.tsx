@@ -1,6 +1,6 @@
 import { AppHeader } from '@/app/_components/AppHeader';
 import { PracticeSwitcher } from '@/app/_components/PracticeSwitcher';
-import { currentActor } from '@/app/_lib/page-auth';
+import { currentIdentity } from '@/app/_lib/page-auth';
 import { loadSession } from '@/app/_lib/session';
 import { getTranslations } from 'next-intl/server';
 import { cookies } from 'next/headers';
@@ -8,10 +8,10 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 export default async function Home() {
-  const actorId = await currentActor();
-  if (!actorId) redirect('/sign-in');
+  const identity = await currentIdentity();
+  if (!identity) redirect('/sign-in');
   const store = await cookies();
-  const session = await loadSession(actorId, store.get('NEXT_LOCALE')?.value ?? null);
+  const session = await loadSession(identity, store.get('NEXT_LOCALE')?.value ?? null);
   if (session.memberships.length === 0) redirect('/onboarding');
 
   const selected = store.get('pd_tenant')?.value;
