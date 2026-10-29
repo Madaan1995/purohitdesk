@@ -1,5 +1,12 @@
 # Overnight report — 28 Oct 2026
 
+> **Update 29 Oct 2026 — founder review.** Items 3 and 5 below are superseded: no application role reads
+> `auth.users` (the `app_users` foreign key proves the auth user), and the operator scripts are single calls to
+> `app.ops_add_member` / `app.ops_revoke_member` (role `app_operator`) instead of lifting FORCE RLS. Item 20 now also
+> requires same-origin cookie writes and JSON bodies (CSRF). Item 1: the migration user is a member of an application
+> role only during the migration that hands it functions. Item 27 is still open (staging's Postgres version is not
+> known yet). Details: `docs/proposals/m1.md` §13, `docs/proposals/m2.md` §8, `docs/plan.md` M1/M2/M12/M13.
+
 Built M0, M1, M2, M4 and M5 as stacked branches and pull requests; skipped M3 as instructed. Every PR's base is the
 previous milestone's branch, so each diff shows one milestone. Nothing was pushed to or merged into `main`, nothing was
 applied to Supabase, nothing was deployed to Vercel, and no real credential was used. Database work ran only on a
