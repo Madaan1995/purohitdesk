@@ -114,7 +114,9 @@ Punjabi names stay NULL until P1.
 - [x] Ownership hand-over leaves the migration user in no application role: each migration grants itself the role it hands functions to and revokes it before it ends; `m1_checks.sql` check 17 and a DO block verify it.
 - [x] Every GRANT that could silently grant nothing (EXECUTE on functions owned by another role) is followed by a DO block that raises if the privilege is not in the ACL.
 - [x] Seventh role `app_operator` (NOLOGIN) created with the others; it owns the M2 operator commands.
-- [ ] CI and harness Postgres major version = staging's: **still open** (staging version not known yet); both stay on 16 until it is.
+- [x] CI and harness on PostgreSQL 17 like staging (17.11): `postgres:17.11` in CI; `run.sh` refuses another major version.
+- [x] Harness mirrors staging's `postgres` (BYPASSRLS after the migrations; staging's `auth` grant options; real login).
+- [x] `m1_checks.sql` checks row-level security as the application roles (`SET ROLE`), since `postgres` bypasses RLS.
 
 **Build checklist**
 - [ ] Proposal approved — *written overnight as `docs/proposals/m1.md`, every decision AUTO-DECIDED, awaiting founder review; the review fixes in §13 are FOUNDER-APPROVED* — (columns, policies, helper bodies, check script, test harness, seed), including a concrete example migration file name for the PROPOSED naming scheme (spec §04 §1)
@@ -123,9 +125,9 @@ Punjabi names stay NULL until P1.
 - [x] Real output shown
 
 **Founder verification**
-- [ ] Create the staging Supabase project in `ap-south-1` (Mumbai) if not done; tell me its Postgres version (Dashboard → Settings → Infrastructure) so CI matches it.
+- [x] Create the staging Supabase project in `ap-south-1` (Mumbai) if not done; tell me its Postgres version (Dashboard → Settings → Infrastructure) so CI matches it. *(17.11, 29 Oct 2026)*
 - [ ] In the SQL editor, run each migration in filename order, then the seed. If a role or ownership statement fails, stop and send me the exact error (spec risk U1; no BYPASSRLS or service-role workaround).
-- [ ] Run `supabase/checks/m1_checks.sql`: every row PASS, `ceremony_types` = 20.
+- [ ] Run `supabase/checks/m1_checks.sql`: every row PASS, `ceremony_types` = 20 (rows 18–20 say NO DATA until a practice exists; run it again after M2).
 - [ ] Data API check: `curl "https://<ref>.supabase.co/rest/v1/organizations" -H "apikey: <publishable key>" -H "Accept-Profile: app"` returns an error that the schema is not exposed.
 - [ ] Table Editor: the `app` tables show RLS enabled.
 - [ ] Preview from M0 still works; `/api/v1/healthz` still returns ok.
