@@ -183,17 +183,21 @@ checks (n, check_name, ok) AS (
                               ELSE pg_catalog.pg_has_role(CURRENT_USER, r.oid, 'MEMBER') END))
 ),
 rls AS (
-  SELECT pg_catalog.current_setting('pd_checks.m1_rls')::jsonb AS r
+  -- FAIL, not an empty result, if the DO block above did not run in this session.
+  SELECT coalesce(nullif(pg_catalog.current_setting('pd_checks.m1_rls', true), ''), '{}')::jsonb AS r
 ),
 rls_checks (n, check_name, result) AS (
   SELECT 18, 'RLS as the application roles, no request context: no row of the M1 tables is visible'
-             || coalesce(' (seen: ' || nullif(r ->> 'no_context_seen', '') || ')', ''), r ->> 'no_context' FROM rls
+             || coalesce(' (seen: ' || nullif(r ->> 'no_context_seen', '') || ')', ''),
+         coalesce(r ->> 'no_context', 'FAIL') FROM rls
   UNION ALL
   SELECT 19, 'RLS as the application roles, an actor who is no member in a real practice: no row is visible'
-             || coalesce(' (seen: ' || nullif(r ->> 'forged_seen', '') || ')', ''), r ->> 'forged' FROM rls
+             || coalesce(' (seen: ' || nullif(r ->> 'forged_seen', '') || ')', ''),
+         coalesce(r ->> 'forged', 'FAIL') FROM rls
   UNION ALL
   SELECT 20, 'RLS as app_runtime for a real ACTIVE member: exactly the rows the policies allow'
-             || coalesce(' (seen/allowed: ' || nullif(r ->> 'member_seen', '') || ')', ''), r ->> 'member' FROM rls
+             || coalesce(' (seen/allowed: ' || nullif(r ->> 'member_seen', '') || ')', ''),
+         coalesce(r ->> 'member', 'FAIL') FROM rls
 )
 SELECT n, check_name AS "check", CASE WHEN ok THEN 'PASS' ELSE 'FAIL' END AS result
 FROM checks
