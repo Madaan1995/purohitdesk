@@ -180,6 +180,26 @@ UPDATE app.organizations SET name = 'Pandit A Ji' WHERE id = '0a000000-0000-0000
 SELECT test.is((SELECT version FROM app.organizations WHERE id = '0a000000-0000-0000-0000-00000000000a'), 2,
   'organization version bumps on update');
 
+-- ---------------------------------------------------------------- supabase/checks/m1_checks.sql row-level checks
+-- The founder's checks script, run on these fixtures: it must pass, and it must catch a policy that leaks rows.
+RESET ROLE;
+SELECT test.ctx(NULL, NULL);
+\o /dev/null
+\i supabase/checks/m1_checks.sql
+\o
+SELECT test.is(current_setting('pd_checks.m1_rls')::jsonb - '{no_context_seen,forged_seen,member_seen}'::text[],
+  '{"no_context": "PASS", "forged": "PASS", "member": "PASS"}'::jsonb,
+  'm1_checks.sql: the row-level checks pass on real rows (as the application roles)');
+CREATE POLICY test_leak ON app.organization_priests FOR SELECT TO app_runtime USING (true);
+\o /dev/null
+\i supabase/checks/m1_checks.sql
+\o
+SELECT test.is(current_setting('pd_checks.m1_rls')::jsonb ->> 'no_context_seen', 'app_runtime app.organization_priests',
+  'm1_checks.sql reports the leaking table when there is no request context');
+SELECT test.is(current_setting('pd_checks.m1_rls')::jsonb ->> 'member', 'FAIL',
+  'm1_checks.sql reports a member who sees another practice''s rows');
+DROP POLICY test_leak ON app.organization_priests;
+
 -- ---------------------------------------------------------------- identity detaches when the auth user is deleted
 DELETE FROM auth.users WHERE id = 'aaaaaaaa-0000-0000-0000-000000000003';
 SELECT test.ok((SELECT auth_user_id IS NULL FROM app.app_users WHERE id = 'aaaaaaaa-0000-0000-0000-000000000003'),

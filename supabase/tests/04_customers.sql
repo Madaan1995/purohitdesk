@@ -139,4 +139,28 @@ SELECT test.throws(format($$UPDATE app.customers SET org_id = 'b4000000-0000-000
 SELECT test.throws($$DELETE FROM app.customers$$, '42501', 'nobody deletes customers (erasure is an update)');
 RESET ROLE;
 
+-- ---------------------------------------------------------------- supabase/checks/m4_checks.sql row-level checks
+-- The founder's checks script, run on the customers of A4 and B4: it must pass, and it must catch a leaking policy.
+SELECT test.ctx(NULL, NULL);
+\o /dev/null
+\i supabase/checks/m4_checks.sql
+\o
+SELECT test.is(current_setting('pd_checks.m4_rls')::jsonb - '{no_context_seen,forged_seen,member_seen}'::text[],
+  '{"no_context": "PASS", "forged": "PASS", "member": "PASS"}'::jsonb,
+  'm4_checks.sql: the row-level checks pass on real customers (as the application roles)');
+CREATE POLICY test_leak ON app.customers FOR SELECT TO app_domain USING (true);
+\o /dev/null
+\i supabase/checks/m4_checks.sql
+\o
+SELECT test.is(current_setting('pd_checks.m4_rls')::jsonb ->> 'forged_seen', 'app_domain app.customers',
+  'm4_checks.sql reports customers visible to a non-member');
+DROP POLICY test_leak ON app.customers;
+CREATE POLICY test_leak ON app.customers FOR SELECT TO app_runtime USING (true);
+\o /dev/null
+\i supabase/checks/m4_checks.sql
+\o
+SELECT test.is(current_setting('pd_checks.m4_rls')::jsonb ->> 'member', 'FAIL',
+  'm4_checks.sql reports a member who sees another practice''s customers');
+DROP POLICY test_leak ON app.customers;
+
 ROLLBACK;
