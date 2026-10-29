@@ -553,8 +553,12 @@ END
 $$;
 
 -- ---------------------------------------------------------------------------
--- Ownership hand-over and EXECUTE grants
+-- Ownership hand-over and EXECUTE grants.
+-- The migration user is a member of the function-owning roles only until the end of this file: the hand-over, the
+-- grant on app_authz's current_member_has and the schema-wide REVOKE ... FROM PUBLIC need the owners' rights (spec U1).
 -- ---------------------------------------------------------------------------
+GRANT app_authz, app_bootstrap, app_domain, app_operator TO CURRENT_USER;
+
 GRANT CREATE ON SCHEMA app TO app_domain;
 ALTER FUNCTION app.save_offering(uuid, integer, jsonb, text, text) OWNER TO app_domain;
 ALTER FUNCTION app.save_samagri_template(uuid, integer, uuid, jsonb, text, text) OWNER TO app_domain;
@@ -578,6 +582,32 @@ GRANT EXECUTE ON FUNCTION
   app.update_priest_settings(uuid, integer, integer, text, text)
   TO app_runtime;
 
+-- These functions are owned by app_domain and app_authz. A GRANT by a user without the owner's rights only warns and
+-- grants nothing, so check that every EXECUTE grant above is really in the ACL.
+DO $$
+DECLARE
+  v record;
+BEGIN
+  FOR v IN
+    SELECT x.fn, x.grantee
+    FROM (VALUES
+      ('app.current_member_has(text)', 'app_runtime'),
+      ('app.save_offering(uuid,integer,jsonb,text,text)', 'app_runtime'),
+      ('app.save_samagri_template(uuid,integer,uuid,jsonb,text,text)', 'app_runtime'),
+      ('app.update_organization(integer,jsonb,text,text)', 'app_runtime'),
+      ('app.update_priest_settings(uuid,integer,integer,text,text)', 'app_runtime')
+    ) AS x (fn, grantee)
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) a
+      WHERE p.oid = v.fn::regprocedure AND a.grantee = v.grantee::regrole AND a.privilege_type = 'EXECUTE'
+    ) THEN
+      RAISE EXCEPTION 'GRANT EXECUTE ON FUNCTION % TO % did not take effect', v.fn, v.grantee;
+    END IF;
+  END LOOP;
+END
+$$;
+
 DO $$
 DECLARE
   r text;
@@ -587,6 +617,33 @@ BEGIN
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL TABLES IN SCHEMA app FROM %I', r);
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA app FROM %I', r);
       EXECUTE pg_catalog.format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA app FROM %I', r);
+    END IF;
+  END LOOP;
+END
+$$;
+
+-- ---------------------------------------------------------------------------
+-- End of the hand-over: the migration user keeps no application role's privileges (as after M1).
+-- ---------------------------------------------------------------------------
+REVOKE app_authz, app_bootstrap, app_domain, app_operator FROM CURRENT_USER;
+
+DO $$
+DECLARE
+  r     text;
+  v_set boolean;
+BEGIN
+  IF (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname = CURRENT_USER) THEN
+    RETURN;
+  END IF;
+  FOREACH r IN ARRAY ARRAY['app_runtime', 'app_domain', 'app_authz', 'app_bootstrap', 'app_freebusy',
+                           'app_maintenance', 'app_operator'] LOOP
+    IF pg_catalog.current_setting('server_version_num')::int >= 160000 THEN
+      v_set := pg_catalog.pg_has_role(CURRENT_USER, r, 'SET');
+    ELSE
+      v_set := pg_catalog.pg_has_role(CURRENT_USER, r, 'MEMBER');
+    END IF;
+    IF v_set OR pg_catalog.pg_has_role(CURRENT_USER, r, 'USAGE') THEN
+      RAISE EXCEPTION 'migration user % is still a member of %', CURRENT_USER, r;
     END IF;
   END LOOP;
 END
