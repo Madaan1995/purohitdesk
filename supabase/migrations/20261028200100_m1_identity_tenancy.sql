@@ -377,7 +377,7 @@ BEGIN
     RETURN;
   END IF;
   FOREACH r IN ARRAY ARRAY['app_runtime', 'app_domain', 'app_authz', 'app_bootstrap', 'app_freebusy',
-                           'app_maintenance'] LOOP
+                           'app_maintenance', 'app_operator'] LOOP
     IF pg_catalog.current_setting('server_version_num')::int >= 160000 THEN
       v_set := pg_catalog.pg_has_role(CURRENT_USER, r, 'SET');
     ELSE

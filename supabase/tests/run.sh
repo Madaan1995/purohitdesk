@@ -34,7 +34,8 @@ DO $$
 DECLARE r text;
 BEGIN
   FOREACH r IN ARRAY ARRAY['app_runtime', 'app_domain', 'app_authz', 'app_bootstrap', 'app_freebusy',
-                           'app_maintenance', 'pd_migrator', 'anon', 'authenticated', 'service_role'] LOOP
+                           'app_maintenance', 'app_operator', 'pd_migrator', 'anon', 'authenticated',
+                           'service_role'] LOOP
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
       EXECUTE format('DROP ROLE %I', r);
     END IF;

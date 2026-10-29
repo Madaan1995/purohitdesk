@@ -4,7 +4,7 @@ BEGIN;
 SELECT test.ok(EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'app'), 'schema app exists');
 
 SELECT test.is((SELECT count(*) FROM pg_roles WHERE rolname IN ('app_runtime', 'app_domain', 'app_authz',
-  'app_bootstrap', 'app_freebusy', 'app_maintenance')), 6::bigint, 'six application roles exist');
+  'app_bootstrap', 'app_freebusy', 'app_maintenance', 'app_operator')), 7::bigint, 'seven application roles exist');
 
 SELECT test.ok(NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname LIKE 'app\_%' AND (rolsuper OR rolbypassrls)),
   'no application role has BYPASSRLS or SUPERUSER');
