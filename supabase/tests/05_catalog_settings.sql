@@ -183,4 +183,25 @@ SELECT test.throws($$UPDATE app.audit_log SET data = '{}'$$, 'PD405', 'audit ent
 SELECT test.throws($$DELETE FROM app.audit_log$$, 'PD405', 'recent audit entries cannot be deleted', 'APPEND_ONLY');
 SELECT test.throws($$TRUNCATE app.audit_log$$, 'PD405', 'the audit log cannot be truncated', 'APPEND_ONLY');
 
+-- ---------------------------------------------------------------- supabase/checks/m5_checks.sql row-level checks
+-- The founder's checks script, run on the templates and audit entries above: it must pass, and it must catch a
+-- leaking policy.
+RESET ROLE;
+SELECT test.ctx(NULL, NULL);
+\o /dev/null
+\i supabase/checks/m5_checks.sql
+\o
+SELECT test.is(current_setting('pd_checks.m5_rls')::jsonb - '{no_context_seen,forged_seen,member_seen}'::text[],
+  '{"no_context": "PASS", "forged": "PASS", "member": "PASS"}'::jsonb,
+  'm5_checks.sql: the row-level checks pass on real templates and audit entries (as the application roles)');
+CREATE POLICY test_leak ON app.audit_log FOR SELECT TO app_runtime USING (true);
+\o /dev/null
+\i supabase/checks/m5_checks.sql
+\o
+SELECT test.is(current_setting('pd_checks.m5_rls')::jsonb ->> 'no_context_seen', 'app_runtime app.audit_log',
+  'm5_checks.sql reports audit entries visible without a request context');
+SELECT test.is(current_setting('pd_checks.m5_rls')::jsonb ->> 'member', 'FAIL',
+  'm5_checks.sql reports audit entries a member may not see');
+DROP POLICY test_leak ON app.audit_log;
+
 ROLLBACK;
