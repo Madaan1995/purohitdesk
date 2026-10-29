@@ -109,8 +109,14 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 
 Punjabi names stay NULL until P1.
 
+**Founder review fixes (29 Oct 2026, FOUNDER-APPROVED; details in `docs/proposals/m1.md` §13)**
+- [x] Harness gives `pd_migrator` auth access without GRANT OPTION, as Supabase gives `postgres`.
+- [x] Ownership hand-over leaves the migration user in no application role: each migration grants itself the role it hands functions to and revokes it before it ends; `m1_checks.sql` check 17 and a DO block verify it.
+- [x] Every GRANT that could silently grant nothing (EXECUTE on functions owned by another role) is followed by a DO block that raises if the privilege is not in the ACL.
+- [ ] CI and harness Postgres major version = staging's: **still open** (staging version not known yet); both stay on 16 until it is.
+
 **Build checklist**
-- [ ] Proposal approved — *written overnight as `docs/proposals/m1.md`, every decision AUTO-DECIDED, awaiting founder review* — (columns, policies, helper bodies, check script, test harness, seed), including a concrete example migration file name for the PROPOSED naming scheme (spec §04 §1)
+- [ ] Proposal approved — *written overnight as `docs/proposals/m1.md`, every decision AUTO-DECIDED, awaiting founder review; the review fixes in §13 are FOUNDER-APPROVED* — (columns, policies, helper bodies, check script, test harness, seed), including a concrete example migration file name for the PROPOSED naming scheme (spec §04 §1)
 - [x] Migrations written; seed written; `m1_checks.sql` written
 - [x] SQL tests pass on a throwaway Postgres; CI database job green (CI: pending on the PR)
 - [x] Real output shown
