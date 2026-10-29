@@ -17,7 +17,8 @@ SELECT test.is((
   WHERE p.pronamespace = 'app'::regnamespace AND p.prosecdef),
   'assert_permission=app_authz, bootstrap_practice=app_bootstrap, current_member_has=app_authz, '
   'current_member_role=app_authz, current_priest_profile_id=app_authz, ensure_current_user=app_bootstrap, '
-  'is_active_member_of=app_authz, update_my_profile=app_domain',
+  'is_active_member_of=app_authz, ops_add_member=app_operator, ops_revoke_member=app_operator, '
+  'update_my_profile=app_domain',
   'SECURITY DEFINER functions and their NOLOGIN owners');
 
 SELECT test.ok(NOT EXISTS (

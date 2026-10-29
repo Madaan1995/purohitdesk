@@ -387,30 +387,151 @@ END
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Operator commands (owner app_operator): add or revoke a non-owner member on staging (supabase/ops). P0 has no
+-- member-management UI. Only the migration user (Supabase: postgres) may execute them; app_operator's policies admit
+-- no OWNER row, so neither function can create, change or revoke an owner even if its checks were wrong.
+-- ---------------------------------------------------------------------------
+CREATE POLICY organizations_operator_read ON app.organizations
+  FOR SELECT TO app_operator
+  USING (true);
+CREATE POLICY app_users_operator_read ON app.app_users
+  FOR SELECT TO app_operator
+  USING (true);
+CREATE POLICY org_members_operator_read ON app.org_members
+  FOR SELECT TO app_operator
+  USING (true);
+CREATE POLICY org_members_operator_insert ON app.org_members
+  FOR INSERT TO app_operator
+  WITH CHECK (role IN ('ADMIN', 'STAFF', 'READ_ONLY'));
+CREATE POLICY org_members_operator_update ON app.org_members
+  FOR UPDATE TO app_operator
+  USING (role <> 'OWNER')
+  WITH CHECK (role IN ('ADMIN', 'STAFF', 'READ_ONLY'));
+
+GRANT SELECT (id, name, status) ON app.organizations TO app_operator;
+GRANT SELECT (id, auth_user_id, status) ON app.app_users TO app_operator;
+GRANT SELECT, INSERT ON app.org_members TO app_operator;
+GRANT UPDATE (role, status) ON app.org_members TO app_operator;
+GRANT EXECUTE ON FUNCTION app.raise_error(text, text, jsonb) TO app_operator;
+
+-- The practice is found by its OWNER and its name, as shown on the home page; the caller looks up user ids in
+-- auth.users (supabase/ops/*.sql). Returns ids, role and status only (no names or e-mails).
+CREATE FUNCTION app._ops_practice(p_owner_user_id uuid, p_practice_name text) RETURNS uuid
+LANGUAGE plpgsql STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  v_ids uuid[];
+BEGIN
+  SELECT array_agg(o.id) INTO v_ids
+  FROM app.organizations o
+  JOIN app.org_members m ON m.org_id = o.id
+  WHERE m.user_id = p_owner_user_id AND m.role = 'OWNER' AND m.status = 'ACTIVE'
+    AND o.name = p_practice_name AND o.status = 'ACTIVE';
+  IF v_ids IS NULL THEN
+    PERFORM app.raise_error('PD404', 'PRACTICE_NOT_FOUND', '{"resource": "organization"}');
+  END IF;
+  IF cardinality(v_ids) > 1 THEN
+    PERFORM app.raise_error('PD422', 'PRACTICE_NAME_AMBIGUOUS', '{"field": "practice_name"}');
+  END IF;
+  RETURN v_ids[1];
+END
+$$;
+
+CREATE FUNCTION app.ops_add_member(
+  p_owner_user_id uuid, p_practice_name text, p_member_user_id uuid, p_role text
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_org    uuid;
+  v_member app.org_members%ROWTYPE;
+BEGIN
+  IF p_role IS NULL OR p_role NOT IN ('ADMIN', 'STAFF', 'READ_ONLY') THEN
+    -- OWNER is never granted here; PRIEST needs a priest link (not supported by the operator scripts).
+    PERFORM app.raise_error('PD422', 'ROLE_NOT_ALLOWED', '{"field": "role"}');
+  END IF;
+  v_org := app._ops_practice(p_owner_user_id, p_practice_name);
+  IF NOT EXISTS (SELECT 1 FROM app.app_users u
+                 WHERE u.id = p_member_user_id AND u.status = 'ACTIVE' AND u.auth_user_id IS NOT NULL) THEN
+    PERFORM app.raise_error('PD404', 'MEMBER_NOT_SIGNED_IN', '{"resource": "app_user"}');
+  END IF;
+  IF EXISTS (SELECT 1 FROM app.org_members m
+             WHERE m.org_id = v_org AND m.user_id = p_member_user_id AND m.role = 'OWNER') THEN
+    PERFORM app.raise_error('PD422', 'OWNER_UNTOUCHABLE', '{"field": "member"}');
+  END IF;
+
+  INSERT INTO app.org_members (org_id, user_id, role, status)
+  VALUES (v_org, p_member_user_id, p_role, 'ACTIVE')
+  ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role, status = 'ACTIVE'
+  RETURNING * INTO v_member;
+
+  RETURN jsonb_build_object('org_id', v_member.org_id, 'user_id', v_member.user_id, 'role', v_member.role,
+                            'status', v_member.status);
+END
+$$;
+
+CREATE FUNCTION app.ops_revoke_member(p_owner_user_id uuid, p_practice_name text, p_member_user_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_org    uuid;
+  v_member app.org_members%ROWTYPE;
+BEGIN
+  v_org := app._ops_practice(p_owner_user_id, p_practice_name);
+  IF EXISTS (SELECT 1 FROM app.org_members m
+             WHERE m.org_id = v_org AND m.user_id = p_member_user_id AND m.role = 'OWNER') THEN
+    PERFORM app.raise_error('PD422', 'OWNER_UNTOUCHABLE', '{"field": "member"}');
+  END IF;
+
+  UPDATE app.org_members m
+  SET status = 'REVOKED'
+  WHERE m.org_id = v_org AND m.user_id = p_member_user_id AND m.status = 'ACTIVE'
+  RETURNING * INTO v_member;
+  IF NOT FOUND THEN
+    PERFORM app.raise_error('PD404', 'NOT_AN_ACTIVE_MEMBER', '{"resource": "org_member"}');
+  END IF;
+
+  -- Takes effect on the member's next request: every policy checks an ACTIVE membership (spec §08 §1).
+  RETURN jsonb_build_object('org_id', v_member.org_id, 'user_id', v_member.user_id, 'role', v_member.role,
+                            'status', v_member.status);
+END
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Ownership hand-over (temporary CREATE on the schema, spec defect #2) and EXECUTE grants.
 -- The migration user is a member of the function-owning roles only until the end of this file: the hand-over and the
 -- schema-wide REVOKE ... FROM PUBLIC need the owners' rights (app_authz owns the M1 helpers).
 -- ---------------------------------------------------------------------------
-GRANT app_authz, app_bootstrap, app_domain TO CURRENT_USER;
+GRANT app_authz, app_bootstrap, app_domain, app_operator TO CURRENT_USER;
 
-GRANT CREATE ON SCHEMA app TO app_bootstrap, app_domain;
+GRANT CREATE ON SCHEMA app TO app_bootstrap, app_domain, app_operator;
 ALTER FUNCTION app.ensure_current_user(text, text) OWNER TO app_bootstrap;
 ALTER FUNCTION app.bootstrap_practice(text, uuid[], text, text) OWNER TO app_bootstrap;
 ALTER FUNCTION app.update_my_profile(text, text) OWNER TO app_domain;
-REVOKE CREATE ON SCHEMA app FROM app_bootstrap, app_domain;
+ALTER FUNCTION app.ops_add_member(uuid, text, uuid, text) OWNER TO app_operator;
+ALTER FUNCTION app.ops_revoke_member(uuid, text, uuid) OWNER TO app_operator;
+REVOKE CREATE ON SCHEMA app FROM app_bootstrap, app_domain, app_operator;
 
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA app FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION app._idem_begin(text, text, text), app._idem_finish(text, jsonb)
   TO app_domain, app_bootstrap;
 GRANT EXECUTE ON FUNCTION app._slugify(text) TO app_bootstrap;
+GRANT EXECUTE ON FUNCTION app._ops_practice(uuid, text) TO app_operator;
 GRANT EXECUTE ON FUNCTION
   app.ensure_current_user(text, text),
   app.update_my_profile(text, text),
   app.bootstrap_practice(text, uuid[], text, text)
   TO app_runtime;
+-- The operator commands: the migration user only (the founder in the SQL editor), never an application role.
+GRANT EXECUTE ON FUNCTION app.ops_add_member(uuid, text, uuid, text), app.ops_revoke_member(uuid, text, uuid)
+  TO CURRENT_USER;
 
--- These functions are owned by app_bootstrap and app_domain. A GRANT by a user without the owner's
+-- These functions are owned by app_bootstrap, app_domain and app_operator. A GRANT by a user without the owner's
 -- rights only warns and grants nothing, so check that every EXECUTE grant above is really in the ACL.
 DO $$
 DECLARE
@@ -421,7 +542,9 @@ BEGIN
     FROM (VALUES
       ('app.ensure_current_user(text,text)', 'app_runtime'),
       ('app.update_my_profile(text,text)', 'app_runtime'),
-      ('app.bootstrap_practice(text,uuid[],text,text)', 'app_runtime')
+      ('app.bootstrap_practice(text,uuid[],text,text)', 'app_runtime'),
+      ('app.ops_add_member(uuid,text,uuid,text)', CURRENT_USER::text),
+      ('app.ops_revoke_member(uuid,text,uuid)', CURRENT_USER::text)
     ) AS x (fn, grantee)
   LOOP
     IF NOT EXISTS (
@@ -451,7 +574,7 @@ $$;
 -- ---------------------------------------------------------------------------
 -- End of the hand-over: the migration user keeps no application role's privileges (as after M1).
 -- ---------------------------------------------------------------------------
-REVOKE app_authz, app_bootstrap, app_domain FROM CURRENT_USER;
+REVOKE app_authz, app_bootstrap, app_domain, app_operator FROM CURRENT_USER;
 
 DO $$
 DECLARE

@@ -32,10 +32,11 @@ checks (n, check_name, ok) AS (
     pg_catalog.has_function_privilege('app_runtime', 'app.ensure_current_user(text,text)', 'EXECUTE')
     AND pg_catalog.has_function_privilege('app_runtime', 'app.update_my_profile(text,text)', 'EXECUTE')
     AND pg_catalog.has_function_privilege('app_runtime', 'app.bootstrap_practice(text,uuid[],text,text)', 'EXECUTE')),
-  (5, 'app_runtime cannot execute internal helpers (_idem_begin, _idem_finish, _slugify)',
+  (5, 'app_runtime cannot execute internal helpers (_idem_begin, _idem_finish, _slugify, _ops_practice)',
     NOT pg_catalog.has_function_privilege('app_runtime', 'app._idem_begin(text,text,text)', 'EXECUTE')
     AND NOT pg_catalog.has_function_privilege('app_runtime', 'app._idem_finish(text,jsonb)', 'EXECUTE')
-    AND NOT pg_catalog.has_function_privilege('app_runtime', 'app._slugify(text)', 'EXECUTE')),
+    AND NOT pg_catalog.has_function_privilege('app_runtime', 'app._slugify(text)', 'EXECUTE')
+    AND NOT pg_catalog.has_function_privilege('app_runtime', 'app._ops_practice(uuid,text)', 'EXECUTE')),
   (6, 'app_runtime has no privilege on idempotency_keys or org_sequences',
     NOT pg_catalog.has_table_privilege('app_runtime', 'app.idempotency_keys', 'SELECT, INSERT, UPDATE, DELETE')
     AND NOT pg_catalog.has_table_privilege('app_runtime', 'app.org_sequences', 'SELECT, INSERT, UPDATE, DELETE')),
@@ -61,7 +62,18 @@ checks (n, check_name, ok) AS (
     NOT EXISTS (SELECT 1 FROM app_tables WHERE NOT relrowsecurity)
     AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_policy pol JOIN app_tables t ON t.oid = pol.polrelid
                     WHERE 0::oid = ANY (pol.polroles))),
-  (12, 'the migration user (you) is not a member of any application role',
+  (12, 'ops_add_member and ops_revoke_member are owned by app_operator',
+    (SELECT count(*) FROM owners WHERE owner = 'app_operator'
+       AND signature IN ('app.ops_add_member(uuid,text,uuid,text)', 'app.ops_revoke_member(uuid,text,uuid)')) = 2),
+  (13, 'only the migration user (you) may execute the operator commands; no application role can',
+    pg_catalog.has_function_privilege(CURRENT_USER, 'app.ops_add_member(uuid,text,uuid,text)', 'EXECUTE')
+    AND pg_catalog.has_function_privilege(CURRENT_USER, 'app.ops_revoke_member(uuid,text,uuid)', 'EXECUTE')
+    AND NOT EXISTS (SELECT 1 FROM app_roles r
+                    WHERE r.rolname <> 'app_operator'
+                      AND (pg_catalog.has_function_privilege(r.oid, 'app.ops_add_member(uuid,text,uuid,text)', 'EXECUTE')
+                           OR pg_catalog.has_function_privilege(r.oid, 'app.ops_revoke_member(uuid,text,uuid)',
+                                                                'EXECUTE')))),
+  (14, 'the migration user (you) is not a member of any application role',
     (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname = CURRENT_USER)
     OR NOT EXISTS (SELECT 1 FROM app_roles r
                    WHERE pg_catalog.pg_has_role(CURRENT_USER, r.oid, 'USAGE')
