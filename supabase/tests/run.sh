@@ -84,13 +84,14 @@ for f in supabase/tests/[0-9][0-9]_*.sql; do
   out="$(psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$f" 2>&1)"
   status=$?
   set -e
-  echo "$out" | grep -E 'NOTICE:  (not )?ok ' | sed -E 's/^.*NOTICE:  //'
+  # A file can abort before its first assertion: an empty grep must not end the run (set -e, pipefail).
+  echo "$out" | grep -E 'NOTICE:  (not )?ok ' | sed -E 's/^.*NOTICE:  //' || true
   p=$(echo "$out" | grep -cE 'NOTICE:  ok ' || true)
   q=$(echo "$out" | grep -cE 'NOTICE:  not ok ' || true)
   passed=$((passed + p))
   failed=$((failed + q))
   if [ "$status" -ne 0 ]; then
-    echo "$out" | grep -E 'ERROR|FATAL' | sed 's/^/   /'
+    echo "$out" | grep -E 'ERROR|FATAL' | sed 's/^/   /' || true
     echo "   file aborted with psql exit status $status"
     failures=$((failures + 1))
   fi
