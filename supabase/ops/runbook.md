@@ -25,19 +25,20 @@ there sees every practice's rows, whatever the policies say.
 ## 1. First-time database setup (M1 + M2)
 
 1. Supabase dashboard → your staging project (region `ap-south-1`, Mumbai) → **SQL Editor**.
-2. Run each file in `supabase/migrations/` **in filename order**, one file per run, the whole file at once:
-   `20261028200000_m1_foundation.sql`, `20261028200100_m1_identity_tenancy.sql`,
-   `20261028210000_m2_auth_onboarding.sql`. If any statement fails (most likely a `CREATE ROLE`, `GRANT <role> TO
-   CURRENT_USER`, `ALTER FUNCTION … OWNER TO` or `REVOKE <role> FROM CURRENT_USER` — spec risk U1), stop and send me
-   the exact error. Do not work around it with BYPASSRLS or the service-role key.
+2. Run each file in `supabase/migrations/` **in filename order**, one file per run, the whole file at once, and
+   only the ones not applied yet: M1 `20261028200000_m1_foundation.sql`, `20261028200100_m1_identity_tenancy.sql`;
+   M2 `20261028210000_m2_auth_onboarding.sql`; M4 `20261028220000_m4_customers.sql`. If any statement fails (most
+   likely a `CREATE ROLE`, `GRANT <role> TO CURRENT_USER`, `ALTER FUNCTION … OWNER TO` or `REVOKE <role> FROM
+   CURRENT_USER` — spec risk U1), stop and send me the exact error. Do not work around it with BYPASSRLS or the
+   service-role key.
    - Each migration makes `postgres` a member of the roles it hands functions to and removes that membership again
      before it ends; `postgres` is never left a member of an application role. A migration also stops with an error
      (and applies nothing) if a `GRANT` silently granted nothing: the SQL editor would otherwise only show a
      `WARNING: no privileges were granted`. Send me that error too.
    - No application role reads `auth.users`; nothing is granted on schema `auth`.
 3. Run `supabase/seed/ceremony_types.sql`.
-4. Run `supabase/checks/m1_checks.sql` and `supabase/checks/m2_checks.sql`. Every row must say `PASS`, except that the
-   row-level-security rows say `NO DATA` while there is no practice yet (§0).
+4. Run every `supabase/checks/m<N>_checks.sql` for the milestones applied so far. Every row must say `PASS`, except
+   that the row-level-security rows say `NO DATA` while there is nothing to test with yet (§0).
 
 ## 2. Give `app_runtime` a login (M2)
 
