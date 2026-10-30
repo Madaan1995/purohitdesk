@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:db": "bash supabase/tests/run.sh"
   },
   "dependencies": {
     "next": "16.4.3",

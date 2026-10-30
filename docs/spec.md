@@ -188,7 +188,7 @@ Conclusions that the re-examination confirmed: B as the base, TypeScript full-st
 | Vercel Hobby is for personal, non-commercial use | [Vercel Hobby plan](https://vercel.com/docs/plans/hobby) |
 | Vercel Pro: $20 per seat/month including $20 usage credit (secondary source, May 2026; confirm on Vercel's pricing page at signup) | [MakerKit, Vercel cost 2026](https://makerkit.dev/blog/saas/vercel-cost) |
 | Supabase Pro $25/month incl. $10 compute credit; Mumbai `ap-south-1` region available; PITR add-on ~$100/month for 7 days | [Supabase pricing](https://supabase.com/pricing.md), [regions](https://supabase.com/docs/guides/platform/regions.md), [PITR](https://supabase.com/docs/guides/platform/manage-your-usage/point-in-time-recovery) |
-| Supabase: only `service_role` and `supabase_etl_admin` have BYPASSRLS; Supabase Cron can schedule SQL functions | [Supabase roles](https://supabase.com/docs/guides/database/postgres/roles.md), [Supabase Cron](https://supabase.com/docs/guides/cron.md) |
+| Supabase: only `service_role` and `supabase_etl_admin` have BYPASSRLS (staging probe 29 Oct 2026: **`postgres` has BYPASSRLS too**, and CREATEROLE, no SUPERUSER); Supabase Cron can schedule SQL functions | [Supabase roles](https://supabase.com/docs/guides/database/postgres/roles.md), [Supabase Cron](https://supabase.com/docs/guides/cron.md) |
 | Render and Railway have no India region | [Render regions](https://render.com/docs/regions), [Railway feature request](https://station.railway.com/feedback/feature-request-add-an-india-infrastruc-fee82197) |
 | WhatsApp: Meta resumed charging in-window utility templates on 1 Oct 2026; India utility ~₹0.145, marketing ~₹1.09 (BSP rate card, secondary) | [Meta pricing](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing.md), [AiSensy](https://m.aisensy.com/blog/whatsapp-pricing-update-october-2026/) |
 | DPDP Rules: phased; Rule 4 ~13 Nov 2026, main obligations ~13 May 2027; Oct 2026 Removal of Difficulties Order | [Mondaq](https://www.mondaq.com/dpdp-act-and-rules-2025-the-2026-compliance-milestones-businesses-cant-afford-to-miss/1830402), [India Briefing](https://www.india-briefing.com/news/dpdp-removal-of-difficulties-order-2026-consent-data-audit-47274.html/) |
@@ -413,7 +413,7 @@ sequenceDiagram
 | Environment | Web | Database | Data | Purpose |
 | --- | --- | --- | --- | --- |
 | local | `next dev` | Throwaway Postgres for SQL tests (sandbox or Docker); never a real or shared database | Fixtures only | Development, SQL tests |
-| CI | — | Postgres 16 service container | Throwaway | typecheck, unit tests, SQL suite, concurrency, smoke, gates (`.github/workflows/ci.yml`, EXECUTED locally; the workflow itself first runs in T-01) |
+| CI | — | Postgres 17 service container (17.11, as staging) | Throwaway | typecheck, unit tests, SQL suite, concurrency, smoke, gates (`.github/workflows/ci.yml`, EXECUTED locally; the workflow itself first runs in T-01) |
 | staging | Vercel preview (Pro) | Separate Supabase project (Micro), Mumbai | Synthetic only, never real customers | Migration rehearsal, spike measurements |
 | production | Vercel production, `bom1` | Supabase Pro, Mumbai | Real | Pilot |
 
@@ -620,7 +620,7 @@ Revision 2.1 layout (replaces the original seven-file layout):
 
 For reference, the original pack grouped the same objects as: foundation (extension, schema, roles, context helpers, `role_permissions`, shared triggers); identity and tenancy (`app_users`, `organizations`, `org_sequences`, `org_members`, `priest_profiles`, `organization_priests`, membership helpers owned by `app_authz`); CRM and catalog (`customers`, `ceremony_types`, `offerings`, `samagri_templates`, `samagri_template_items`); scheduling (`bookings` + guard, `booking_assignments`, `calendar_reservations` + exclusion and append-only guards, `booking_events`, `booking_samagri_items`, deferred invariant triggers); ledger, voice and operations (`payment_entries` + `booking_balances` view, `voice_extractions`, `idempotency_keys`, `audit_log`); RLS and grants; and commands (internal helpers, 27 public command functions, `get_booking`, `run_retention`, ownership hand-over, EXECUTE grants).
 
-Rules: forward-only; one migration per change; every new table ships with RLS policies in the same migration and a tenant-swap test; SQL tests apply the migrations on a throwaway Postgres as a login role **without** BYPASSRLS or SUPERUSER (in tests: `pd_migrator`, CREATEROLE only), which is how Supabase's `postgres` role behaves.
+Rules: forward-only; one migration per change; every new table ships with RLS policies in the same migration and a tenant-swap test; SQL tests apply the migrations on a throwaway Postgres as a login role **without** BYPASSRLS or SUPERUSER (in tests: `pd_migrator`, CREATEROLE only). That is stricter than Supabase: staging's `postgres` has BYPASSRLS (probe, 29 Oct 2026), so the harness gives `pd_migrator` BYPASSRLS after the migrations, for the seed, checks and operator scripts, and every check of row-level security runs as an application role (`SET ROLE`).
 
 ## 2. Entity-relationship diagram (P0)
 
@@ -1231,7 +1231,7 @@ What P0 already contains for P2: global priest identity, immutable provenance fi
 | Env | Web | Database | Region | Secrets | Data |
 | --- | --- | --- | --- | --- | --- |
 | local | `npm run dev` | Postgres 16 (Docker or Supabase CLI) | — | `.env.local` (never committed) | fixtures |
-| CI | — | Postgres 16 service container | GitHub-hosted | none | throwaway |
+| CI | — | Postgres 17 service container (17.11, as staging) | GitHub-hosted | none | throwaway |
 | staging | Vercel preview deployments (Hobby plan until real users; Pro before the pilot) | Supabase project `purohitdesk-staging` (Micro compute) | `bom1` / `ap-south-1` | Vercel "Preview" env | synthetic only |
 | production | Vercel production | Supabase project `purohitdesk-prod` (Pro, Micro → Small when needed) | `bom1` / `ap-south-1` | Vercel "Production" env | real |
 
@@ -1254,7 +1254,7 @@ Workflow file: `.github/workflows/ci.yml` implements the check stage only. Revis
 
 1. Migrations are forward-only, additive first (expand → deploy code → contract later). Never edit an applied migration; add a new one.
 2. Migrations are applied **before** the code that needs them; code must tolerate the previous schema for one deploy.
-3. Every migration runs in CI against a fresh throwaway database **as a login role without BYPASSRLS or SUPERUSER** (`pd_migrator`), which is how Supabase's `postgres` role behaves ([Supabase roles](https://supabase.com/docs/guides/database/postgres/roles.md)).
+3. Every migration runs in CI against a fresh throwaway database **as a login role without BYPASSRLS or SUPERUSER** (`pd_migrator`). Supabase's `postgres` has no SUPERUSER but does have BYPASSRLS (staging probe, 29 Oct 2026), so this is deliberately stricter; anything that checks RLS as `postgres` must `SET ROLE` to an application role ([Supabase roles](https://supabase.com/docs/guides/database/postgres/roles.md)).
 4. Revision 2.1: migrations are applied by the founder in the Supabase SQL editor, in filename order. There is no custom runner and no `schema_migrations` table; the Supabase CLI is revisited in M13.
 5. Rollback = a new forward migration, or restore (§4) for data loss.
 

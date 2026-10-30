@@ -69,10 +69,10 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 
 ---
 
-## M1 — Foundation schema with RLS
+## M1 — Foundation schema with RLS (built, not founder-verified)
 
 **Delivers**
-- Earliest migration: schema `app`; the six roles `app_runtime`, `app_domain`, `app_authz`, `app_bootstrap`, `app_freebusy`, `app_maintenance` (NOLOGIN, NOBYPASSRLS; the founder gives `app_runtime` LOGIN and a password in M2); shared helpers `current_actor_id()`, `current_tenant_id()`, `raise_error()`, `is_valid_timezone()`, triggers for version bump and append-only.
+- Earliest migration: schema `app`; the six roles `app_runtime`, `app_domain`, `app_authz`, `app_bootstrap`, `app_freebusy`, `app_maintenance`, plus `app_operator` from the founder review (NOLOGIN, NOBYPASSRLS; the founder gives `app_runtime` LOGIN and a password in M2); shared helpers `current_actor_id()`, `current_tenant_id()`, `raise_error()`, `is_valid_timezone()`, triggers for version bump and append-only.
 - Identity and tenancy migration: tables below, each with ENABLE + FORCE RLS, role-scoped policies and grants in the same file; membership helpers owned by `app_authz` (`current_member_role`, `current_member_has`, `is_active_member_of`, `current_priest_profile_id`, `assert_permission`); the `role_permissions` matrix from spec §08.
 - `supabase/seed/ceremony_types.sql` (20 ceremonies, idempotent upsert).
 - `supabase/checks/m1_checks.sql`: read-only, prints PASS/FAIL per check.
@@ -109,16 +109,25 @@ Definition of done for every milestone: all of the above, plus the milestone's v
 
 Punjabi names stay NULL until P1.
 
+**Founder review fixes (29 Oct 2026, FOUNDER-APPROVED; details in `docs/proposals/m1.md` §13)**
+- [x] Harness gives `pd_migrator` auth access without GRANT OPTION, as Supabase gives `postgres`.
+- [x] Ownership hand-over leaves the migration user in no application role: each migration grants itself the role it hands functions to and revokes it before it ends; `m1_checks.sql` check 17 and a DO block verify it.
+- [x] Every GRANT that could silently grant nothing (EXECUTE on functions owned by another role) is followed by a DO block that raises if the privilege is not in the ACL.
+- [x] Seventh role `app_operator` (NOLOGIN) created with the others; it owns the M2 operator commands.
+- [x] CI and harness on PostgreSQL 17 like staging (17.11): `postgres:17.11` in CI; `run.sh` refuses another major version.
+- [x] Harness mirrors staging's `postgres` (BYPASSRLS after the migrations; staging's `auth` grant options; real login).
+- [x] `m1_checks.sql` checks row-level security as the application roles (`SET ROLE`), since `postgres` bypasses RLS.
+
 **Build checklist**
-- [ ] Proposal approved (columns, policies, helper bodies, check script, test harness, seed), including a concrete example migration file name for the PROPOSED naming scheme (spec §04 §1)
-- [ ] Migrations written; seed written; `m1_checks.sql` written
-- [ ] SQL tests pass on a throwaway Postgres; CI database job green
-- [ ] Real output shown
+- [ ] Proposal approved — *written overnight as `docs/proposals/m1.md`, every decision AUTO-DECIDED, awaiting founder review; the review fixes in §13 are FOUNDER-APPROVED* — (columns, policies, helper bodies, check script, test harness, seed), including a concrete example migration file name for the PROPOSED naming scheme (spec §04 §1)
+- [x] Migrations written; seed written; `m1_checks.sql` written
+- [x] SQL tests pass on a throwaway Postgres; CI database job green (CI: pending on the PR)
+- [x] Real output shown
 
 **Founder verification**
-- [ ] Create the staging Supabase project in `ap-south-1` (Mumbai) if not done; tell me its Postgres version (Dashboard → Settings → Infrastructure) so CI matches it.
+- [x] Create the staging Supabase project in `ap-south-1` (Mumbai) if not done; tell me its Postgres version (Dashboard → Settings → Infrastructure) so CI matches it. *(17.11, 29 Oct 2026)*
 - [ ] In the SQL editor, run each migration in filename order, then the seed. If a role or ownership statement fails, stop and send me the exact error (spec risk U1; no BYPASSRLS or service-role workaround).
-- [ ] Run `supabase/checks/m1_checks.sql`: every row PASS, `ceremony_types` = 20.
+- [ ] Run `supabase/checks/m1_checks.sql`: every row PASS, `ceremony_types` = 20 (rows 18–20 say NO DATA until a practice exists; run it again after M2).
 - [ ] Data API check: `curl "https://<ref>.supabase.co/rest/v1/organizations" -H "apikey: <publishable key>" -H "Accept-Profile: app"` returns an error that the schema is not exposed.
 - [ ] Table Editor: the `app` tables show RLS enabled.
 - [ ] Preview from M0 still works; `/api/v1/healthz` still returns ok.
