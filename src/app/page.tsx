@@ -1,5 +1,6 @@
 import { AppHeader } from '@/app/_components/AppHeader';
 import { PracticeSwitcher } from '@/app/_components/PracticeSwitcher';
+import { SiteFooter } from '@/app/_components/SiteFooter';
 import { requirePractice } from '@/app/_lib/page-auth';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -55,6 +56,7 @@ export default async function Home() {
           </Link>
         )}
       </main>
+      <SiteFooter />
     </>
   );
 }
