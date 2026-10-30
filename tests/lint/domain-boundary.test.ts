@@ -30,11 +30,25 @@ describe("src/domain boundary rule", () => {
     ]);
   });
 
-  it.each(forbiddenImports)("allows %s outside src/domain", async (code) => {
+  // postgres is the exception: outside src/domain it is still allowed only in src/db (tested below).
+  it.each(forbiddenImports.filter((code) => !code.includes('"postgres"')))("allows %s outside src/domain", async (code) => {
     expect(await boundaryErrors(`${code}\n`, "src/app/example.ts")).toEqual([]);
   });
 
   it("allows pure code in src/domain", async () => {
     expect(await boundaryErrors("export const paise = (rupees: number): number => rupees * 100;\n", "src/domain/example.ts")).toEqual([]);
+  });
+});
+
+describe("database driver boundary (spec ADR-002)", () => {
+  it.each(["src/app/api/v1/session/route.ts", "src/app/page.tsx", "src/adapters/x.ts"])(
+    "flags postgres imported in %s",
+    async (filePath) => {
+      expect(await boundaryErrors('import postgres from "postgres";\n', filePath)).toEqual(["no-restricted-imports"]);
+    },
+  );
+
+  it("allows postgres in src/db", async () => {
+    expect(await boundaryErrors('import postgres from "postgres";\n', "src/db/client.ts")).toEqual([]);
   });
 });

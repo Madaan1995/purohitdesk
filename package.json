@@ -12,12 +12,19 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:db": "bash supabase/tests/run.sh"
+    "test:db": "bash supabase/tests/run.sh",
+    "test:integration": "vitest run --config vitest.integration.config.mts"
   },
   "dependencies": {
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "2.117.3",
+    "jose": "6.2.12",
     "next": "16.4.3",
+    "next-intl": "4.14.9",
+    "postgres": "3.4.9",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",

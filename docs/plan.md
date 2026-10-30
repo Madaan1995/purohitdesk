@@ -134,7 +134,7 @@ Punjabi names stay NULL until P1.
 
 ---
 
-## M2 — Auth, session, onboarding and roles
+## M2 — Auth, session, onboarding and roles (built, not founder-verified)
 
 **Delivers**
 - Google sign-in via Supabase Auth with `@supabase/ssr` (httpOnly cookie session); sign-out.
@@ -147,26 +147,35 @@ Punjabi names stay NULL until P1.
 - `supabase/ops/`: runbook for giving `app_runtime` LOGIN + password; script to add an existing user as a member with another role (ADMIN, PRIEST, STAFF, READ_ONLY) and to revoke a member, on staging.
 - Step-by-step instructions for the founder: where to confirm asymmetric JWT signing keys in the Supabase dashboard; Google OAuth client setup; Supabase redirect URLs including the Vercel preview wildcard.
 
-**Tables:** new `offerings`, `org_sequences`, `idempotency_keys`; written through commands: `app_users`, `organizations`, `org_members`, `priest_profiles`, `organization_priests`; read: `role_permissions`, `ceremony_types`, `auth.users`.
+**Tables:** new `offerings`, `org_sequences`, `idempotency_keys`; written through commands: `app_users`, `organizations`, `org_members`, `priest_profiles`, `organization_priests`; read: `role_permissions`, `ceremony_types` (`auth.users` is only referenced by the `app_users` foreign key, never read; founder review).
 **Env vars:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `DATABASE_URL` (server-only) — added to `.env.example`.
 **Domain/unit tests (PROPOSED):** error mapping for every SQLSTATE in spec §11 §3; request hash is stable for reordered JSON keys; `Idempotency-Key` length 8–128; locale resolution (cookie vs profile); JWT verification rejects missing, expired, wrong-audience and wrong-signature tokens (spec API-SEC-1).
 **SQL tests (PROPOSED):** spec `01_bootstrap_identity` assertions (with "the chosen offerings (at least 1)"), forged tenant → zero rows/404, revoked member loses access, bootstrap refuses to run inside a tenant context.
 
+**Founder review fixes (29 Oct 2026, FOUNDER-APPROVED; details in `docs/proposals/m2.md` §8)**
+- [x] Confirmed first that the M2 tests fail once the harness matches Supabase (no GRANT OPTION on `auth`).
+- [x] No `auth` grants and no read of `auth.users`: the `app_users` FK proves the auth user (23503 → PD401); the display name is passed in from the verified JWT's `user_metadata` as untrusted display text.
+- [x] Operator scripts are single calls to `app.ops_add_member` / `app.ops_revoke_member` (owner `app_operator`, SECURITY DEFINER, executable only by `postgres`); no FORCE RLS toggling, no e-mails in the output.
+- [x] Temporary role membership for the ownership hand-over, revoked at the end; GRANTs on other roles' functions verified by DO blocks.
+- [x] CSRF: same-origin check for cookie-authenticated writes and for `/auth/sign-out`; request bodies must be `application/json`.
+- [x] `m2_checks.sql` checks row-level security as the application roles (`SET ROLE`); runbook §0 explains that `postgres` bypasses RLS in the SQL editor.
+
 **Build checklist**
-- [ ] Proposal approved (columns, function bodies, response shapes for Session/Organization/onboarding, pages, ops scripts)
-- [ ] Migrations, checks script, SQL tests
-- [ ] Auth, `src/db`, routes, OpenAPI operations, pages, i18n catalogs
-- [ ] Ops runbook and member script
-- [ ] Founder instructions for JWKS, Google OAuth and redirect URLs
-- [ ] Real output shown; CI green
+- [ ] Proposal approved — *written overnight as `docs/proposals/m2.md`, every decision AUTO-DECIDED, awaiting founder review; the review fixes in §8 are FOUNDER-APPROVED* — (columns, function bodies, response shapes for Session/Organization/onboarding, pages, ops scripts)
+- [x] Migrations, checks script, SQL tests
+- [x] Auth, `src/db`, routes, OpenAPI operations, pages, i18n catalogs
+- [x] Ops runbook and member script
+- [x] Founder instructions for JWKS, Google OAuth and redirect URLs
+- [x] Real output shown; CI green (CI: see the PR)
 
 **Founder verification**
-- [ ] Apply the M2 migrations; run `supabase/checks/m2_checks.sql`: all PASS.
+- [ ] Apply the M2 migrations; run `supabase/checks/m2_checks.sql`: all PASS (the row-level rows say NO DATA until a practice exists).
 - [ ] Confirm asymmetric JWT signing keys at the dashboard location I give you.
 - [ ] Set `app_runtime` LOGIN + password per the runbook; add the three env vars to Vercel's Preview environment.
 - [ ] Configure Google sign-in and redirect URLs per my instructions.
 - [ ] Preview: sign in with Google → onboarding. Name a practice, pick 1+ ceremonies, save. Home shows the practice and **OWNER** with its permissions.
 - [ ] Submit onboarding twice quickly (or retry after a network drop): still one practice.
+- [ ] Run `m1_checks.sql` and `m2_checks.sql` again now that a practice exists: every row PASS, including the row-level checks (they run as the application roles; you, `postgres`, bypass RLS — runbook §0).
 - [ ] Create practices until you have 3; a 4th is refused with a clear message. The switcher lists exactly your 3.
 - [ ] Switch to हिन्दी, reload, sign out and in again: still Hindi.
 - [ ] Run the ops script to add a second Google account to your practice as STAFF; sign in with it: home shows STAFF and STAFF's permissions only. Repeat with READ_ONLY.
@@ -317,6 +326,10 @@ Punjabi names stay NULL until P1.
 **Delivers:** `erase_customer`, `begin_export`, `run_retention` (owner `app_maintenance`); `POST /customers/{id}/erase` with confirmation dialog, `GET /exports/{customers|bookings|payments}.csv` (formula-escaped, audited); runbook for the hourly Supabase Cron job.
 **Tables:** none new (writes `audit_log`, scrubs existing tables). **Env vars:** none.
 
+**Recorded by the founder review (29 Oct 2026), to fix in this milestone (not before):**
+- `idempotency_keys` has no link to a customer, so `erase_customer` cannot find the stored responses that contain that customer's data (spec §05 §9 and §08 §5 require scrubbing them).
+- `idempotency_keys.request_hash` is `NOT NULL`, so a scrubbed key cannot have its hash removed.
+
 **Founder verification**
 - [ ] Export customers; a customer named `=HYPERLINK(...)` appears as `'=HYPERLINK(...)` in the spreadsheet.
 - [ ] Erase a customer with bookings and payments: name, phone and booking notes are gone; amounts and busy times remain.
@@ -328,6 +341,9 @@ Punjabi names stay NULL until P1.
 
 **Delivers:** production Supabase project (Mumbai) and Vercel Pro (`bom1`) before real users; error monitoring (Sentry; its env var name proposed for approval); uptime check on `/api/v1/healthz`; weekly encrypted dump and restore drill runbook; account-deletion drill (T-27); PWA manifest + service worker (static assets only) with the app name and icon; performance pass (agenda ≤ 200 KB JS gzipped, Lighthouse mobile ≥ 80, Devanagari font subset); pilot kit (Hindi walkthrough, privacy notice draft, processor terms for counsel review); revisit applying migrations with the Supabase CLI.
 **Tables:** none new. **Env vars:** proposed in this milestone (e.g. for Sentry) and approved before use.
+
+**Recorded by the founder review (29 Oct 2026), to fix in this milestone (not before):**
+- Deleting the Supabase auth user sets `app_users.auth_user_id` to NULL (FK `ON DELETE SET NULL`) but leaves `status = 'ACTIVE'`; spec §08 §1 (account deletion) says the status becomes DELETED. The account-deletion drill must cover it.
 
 **Founder verification**
 - [ ] Production deploy reachable; healthz ok; uptime alert fires when a test URL fails.
