@@ -1,4 +1,5 @@
 import { AppHeader } from '@/app/_components/AppHeader';
+import { SiteFooter } from '@/app/_components/SiteFooter';
 import { currentActor } from '@/app/_lib/page-auth';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
@@ -25,6 +26,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
           {t('google')}
         </a>
       </main>
+      <SiteFooter />
     </>
   );
 }
