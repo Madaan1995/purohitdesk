@@ -81,10 +81,10 @@ export async function getBooking(tx: Tx, id: string): Promise<Booking | null> {
 }
 
 /** The practice's priest links (for the booking form). */
-export async function listPriests(tx: Tx): Promise<{ id: string; display_name: string }[]> {
+export async function listPriests(tx: Tx): Promise<{ id: string; display_name: string; priest_profile_id: string }[]> {
   return [
-    ...(await tx<{ id: string; display_name: string }[]>`
-      SELECT op.id, p.display_name FROM app.organization_priests op
+    ...(await tx<{ id: string; display_name: string; priest_profile_id: string }[]>`
+      SELECT op.id, p.display_name, op.priest_profile_id FROM app.organization_priests op
       JOIN app.priest_profiles p ON p.id = op.priest_profile_id
       WHERE op.org_id = app.current_tenant_id()
       ORDER BY op.created_at, op.id`),

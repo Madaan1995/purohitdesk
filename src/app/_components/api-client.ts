@@ -6,18 +6,18 @@ export type WriteResult<T> =
 
 export async function apiWrite<T>(
   path: string,
-  init: { method: 'POST' | 'PATCH' | 'PUT'; tenantId: string; idempotencyKey: string; body: unknown; ifMatch?: number },
+  init: { method: 'POST' | 'PATCH' | 'PUT' | 'DELETE'; tenantId: string; idempotencyKey: string; body?: unknown; ifMatch?: number },
 ): Promise<WriteResult<T>> {
   try {
     const res = await fetch(`/api/v1${path}`, {
       method: init.method,
       headers: {
-        'content-type': 'application/json',
+        ...(init.body !== undefined ? { 'content-type': 'application/json' } : {}),
         'x-tenant-id': init.tenantId,
         'idempotency-key': init.idempotencyKey,
         ...(init.ifMatch !== undefined ? { 'if-match': `"${init.ifMatch}"` } : {}),
       },
-      body: JSON.stringify(init.body),
+      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
     });
     const json = await res.json();
     if (res.ok) return { ok: true, data: json as T };

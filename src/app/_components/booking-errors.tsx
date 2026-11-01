@@ -39,6 +39,9 @@ export function BookingError({ failure, timeZone, span, onAcknowledge, onDismiss
     (failure.reason && reasons[failure.reason]) ||
     (failure.code === 'VALIDATION_FAILED' && failure.field === 'reason' ? t('bookings.cancelReasonRequired') : null) ||
     t(`errors.${failure.code}` as 'errors.INTERNAL');
+  if (failure.code === 'BOOKING_CONFLICT' && conflicts.length > 0 && conflicts.every((c) => c.block)) {
+    message = t('bookings.blockedTime');
+  }
   const asking = failure.code === 'BUFFER_CONFLICT' && onAcknowledge;
   if (asking) {
     const gap = span ? travelGapMinutes(conflicts, span.starts_at, span.ends_at) : null;
@@ -63,6 +66,7 @@ export function BookingError({ failure, timeZone, span, onAcknowledge, onDismiss
               <li key={i}>
                 {when(c)}
                 {!c.same_org && ` (${t('bookings.otherPractice')})`}
+                {c.block && ` (${t('bookings.blockLabel')})`}
               </li>
             ))}
           </ul>

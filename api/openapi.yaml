@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: PurohitDesk API
-  version: 0.7.0
+  version: 0.8.0
   description: |
     Written per milestone (docs/plan.md). JSON, UTF-8, snake_case fields matching SQL columns.
     Every write calls exactly one PostgreSQL command (`x-db-function`); `x-permission` names the permission the
@@ -637,6 +637,63 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+  /availability:
+    get:
+      operationId: getAvailability
+      summary: >-
+        Busy time of one priest of this practice in every practice he serves. Other practices' spans come back as kind
+        BUSY with no ids and no details.
+      x-permission: ORG_READ
+      x-db-function: app.priest_busy
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: priest_id, in: query, required: true, description: organization_priest id of this practice, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, description: 'local date in the practice''s time zone, inclusive', schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, description: 'local date, inclusive; at most 62 days of data', schema: { type: string, format: date } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Availability' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /blocks:
+    post:
+      operationId: createBlock
+      summary: Block a priest's time (no travel-time check); ceremony overlap → 409 BOOKING_CONFLICT
+      x-permission: BLOCK_MANAGE, or BLOCK_MANAGE_OWN for own calendar
+      x-db-function: app.create_block
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBlockRequest' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/BlockResult' } } } }
+        '200': { description: Replay, content: { application/json: { schema: { $ref: '#/components/schemas/BlockResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /blocks/{blockId}:
+    parameters:
+      - { name: blockId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: releaseBlock
+      summary: Release a block (kept as RELEASED history); already released → 409 INVALID_TRANSITION
+      x-permission: BLOCK_MANAGE, or BLOCK_MANAGE_OWN for own calendar
+      x-db-function: app.release_block
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BlockResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     bearer:
@@ -1016,6 +1073,7 @@ components:
         ends_at: { type: string, format: date-time }
         same_org: { type: boolean }
         booking_id: { type: string, format: uuid }
+        block: { type: boolean, const: true, description: 'present for a calendar block of the same practice' }
     BookingFields:
       type: object
       properties:
@@ -1076,6 +1134,57 @@ components:
       additionalProperties: false
       properties:
         reason: { type: [string, 'null'], maxLength: 500, description: 'required (3+ characters) for a CONFIRMED booking' }
+    Availability:
+      type: object
+      additionalProperties: false
+      required: [priest_id, timezone, from, to, busy]
+      properties:
+        priest_id: { type: string, format: uuid }
+        timezone: { type: string }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        busy:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, starts_at, ends_at, same_org]
+            properties:
+              kind: { type: string, enum: [BOOKING, BLOCK, BUSY], description: 'BUSY = another practice (no details)' }
+              starts_at: { type: string, format: date-time }
+              ends_at: { type: string, format: date-time }
+              same_org: { type: boolean }
+              booking_id: { type: string, format: uuid, description: same practice only }
+              block_id: { type: string, format: uuid, description: same practice only }
+    Block:
+      type: object
+      additionalProperties: false
+      required: [id, organization_priest_id, starts_at, ends_at, note, status, created_at, released_at]
+      properties:
+        id: { type: string, format: uuid }
+        organization_priest_id: { type: string, format: uuid }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        note: { type: [string, 'null'], maxLength: 500 }
+        status: { type: string, enum: [ACTIVE, RELEASED] }
+        created_at: { type: string, format: date-time }
+        released_at: { type: [string, 'null'], format: date-time }
+    BlockResult:
+      type: object
+      additionalProperties: false
+      required: [block, idempotent_replay]
+      properties:
+        block: { $ref: '#/components/schemas/Block' }
+        idempotent_replay: { type: boolean }
+    CreateBlockRequest:
+      type: object
+      additionalProperties: false
+      required: [priest_id, starts_at, ends_at]
+      properties:
+        priest_id: { type: string, format: uuid, description: organization_priest id of this practice }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time, description: after starts_at, at most 31 days later }
+        note: { type: [string, 'null'], maxLength: 500 }
     ErrorEnvelope:
       type: object
       additionalProperties: false
