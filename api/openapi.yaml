@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: PurohitDesk API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     Written per milestone (docs/plan.md). JSON, UTF-8, snake_case fields matching SQL columns.
     Every write calls exactly one PostgreSQL command (`x-db-function`); `x-permission` names the permission the
@@ -499,7 +499,7 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
-        '409': { description: 'BOOKING_CONFLICT (details.conflicts, see BookingConflict) or IDEMPOTENCY_REUSE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '409': { description: 'BOOKING_CONFLICT or BUFFER_CONFLICT (details.conflicts, see BookingConflict) or IDEMPOTENCY_REUSE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '422': { $ref: '#/components/responses/Error' }
   /bookings/{bookingId}:
     parameters:
@@ -561,7 +561,33 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
-        '409': { description: 'BOOKING_CONFLICT (details.conflicts), INVALID_TRANSITION, VERSION_CONFLICT or IDEMPOTENCY_REUSE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '409': { description: 'BOOKING_CONFLICT or BUFFER_CONFLICT (details.conflicts), INVALID_TRANSITION, VERSION_CONFLICT or IDEMPOTENCY_REUSE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+  /bookings/{bookingId}/reschedule:
+    parameters:
+      - { name: bookingId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: rescheduleBooking
+      summary: >-
+        Move a CONFIRMED booking (times, time zone, tentative flag, buffers, priests) atomically: the old slot is
+        released and the new one reserved, or nothing changes. Resets the buffer acknowledgement.
+      x-permission: BOOKING_CONFIRM, or BOOKING_CONFIRM_OWN when the actor is the LEAD priest before and after any priest_ids change
+      x-db-function: app.reschedule_booking
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RescheduleBookingRequest' }
+      responses:
+        '200': { description: OK, headers: { ETag: { schema: { type: string } } }, content: { application/json: { schema: { $ref: '#/components/schemas/BookingCommandResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: 'BOOKING_CONFLICT or BUFFER_CONFLICT (details.conflicts), INVALID_TRANSITION, VERSION_CONFLICT or IDEMPOTENCY_REUSE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '422': { $ref: '#/components/responses/Error' }
   /bookings/{bookingId}/cancel:
     parameters:
@@ -1014,6 +1040,7 @@ components:
           required: [customer_id, offering_id]
           properties:
             confirm: { type: boolean, default: false }
+            ack_buffer_overlap: { type: boolean, default: false, description: 'with confirm: accept a travel-time overlap (else 409 BUFFER_CONFLICT)' }
       unevaluatedProperties: false
     UpdateBookingRequest:
       allOf:
@@ -1025,6 +1052,25 @@ components:
       additionalProperties: false
       properties:
         priest_ids: { type: array, minItems: 1, maxItems: 11, uniqueItems: true, items: { type: string, format: uuid } }
+        ack_buffer_overlap: { type: boolean, default: false, description: 'accept a travel-time overlap (else 409 BUFFER_CONFLICT)' }
+    RescheduleReasonCode:
+      type: string
+      enum: [CUSTOMER_REQUEST, PRIEST_REQUEST, MUHURAT_FIXED, PRIEST_CHANGED, CORRECTION, OTHER]
+    RescheduleBookingRequest:
+      type: object
+      additionalProperties: false
+      description: Only schedule fields; free text is refused (history holds codes only). At least one value must change.
+      required: [reason_code]
+      properties:
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        timezone: { type: string }
+        is_time_tentative: { type: boolean }
+        buffer_before_min: { type: integer, minimum: 0, maximum: 360 }
+        buffer_after_min: { type: integer, minimum: 0, maximum: 360 }
+        priest_ids: { type: array, minItems: 1, maxItems: 11, uniqueItems: true, items: { type: string, format: uuid } }
+        reason_code: { $ref: '#/components/schemas/RescheduleReasonCode' }
+        ack_buffer_overlap: { type: boolean, default: false }
     CancelBookingRequest:
       type: object
       additionalProperties: false

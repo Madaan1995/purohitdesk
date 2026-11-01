@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import en from '../messages/en.json';
 import hi from '../messages/hi.json';
-import { BOOKING_STATUSES } from '../src/domain/booking';
+import { BOOKING_STATUSES, RESCHEDULE_REASON_CODES } from '../src/domain/booking';
 import { ERROR_CODES } from '../src/domain/errors';
 import { PERMISSIONS, ROLES } from '../src/domain/permissions';
 
@@ -21,6 +21,7 @@ describe('message catalogs', () => {
     ['permissions', PERMISSIONS],
     ['errors', ERROR_CODES],
     ['bookingStatus', BOOKING_STATUSES],
+    ['rescheduleReason', RESCHEDULE_REASON_CODES],
   ] as const)('every %s value has a label in both languages', (group, values) => {
     for (const value of values) {
       expect((hi as Record<string, Record<string, string>>)[group][value]).toBeTruthy();

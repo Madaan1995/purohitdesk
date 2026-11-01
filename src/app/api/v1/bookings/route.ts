@@ -1,5 +1,5 @@
 // GET /api/v1/bookings — BOOKING_READ (every role); POST — BOOKING_CREATE (+ BOOKING_CONFIRM[_OWN] with confirm: true)
-// through app.create_booking.
+// through app.create_booking; ack_buffer_overlap acknowledges a travel-time overlap (409 BUFFER_CONFLICT otherwise).
 import { BadCursorError, listBookings } from '@/app/_lib/bookings';
 import { requireContext } from '@/app/_lib/context';
 import { etag, json, parseBody, route } from '@/app/_lib/http';
@@ -28,11 +28,11 @@ export const GET = route(async (req: Request) => {
 export const POST = route(async (req: Request) => {
   const ctx = await requireContext(req, { tenant: true, idempotency: true });
   const body = await parseBody(req, CreateBookingRequest);
-  const { confirm, ...fields } = body;
+  const { confirm, ack_buffer_overlap: ack, ...fields } = body;
   const hash = requestHash('POST', '/bookings', body);
   const result = await withTenantTx(ctx, (tx) =>
     command<BookingCommandResult>(
-      tx`SELECT app.create_booking(${tx.json(fields)}::jsonb, ${confirm ?? false}::boolean,
+      tx`SELECT app.create_booking(${tx.json(fields)}::jsonb, ${confirm ?? false}::boolean, ${ack ?? false}::boolean,
                                    ${ctx.idempotencyKey}, ${hash}) AS result`,
     ),
   );
