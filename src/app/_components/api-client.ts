@@ -1,6 +1,8 @@
 // Browser-side calls to /api/v1 (the httpOnly session cookie authenticates them). Never throws: returns the error code.
 
-export type WriteResult<T> = { ok: true; data: T } | { ok: false; code: string; field?: string };
+export type WriteResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; code: string; field?: string; reason?: string; details?: Record<string, unknown> };
 
 export async function apiWrite<T>(
   path: string,
@@ -19,7 +21,13 @@ export async function apiWrite<T>(
     });
     const json = await res.json();
     if (res.ok) return { ok: true, data: json as T };
-    return { ok: false, code: json?.error?.code ?? 'INTERNAL', field: json?.error?.details?.field };
+    return {
+      ok: false,
+      code: json?.error?.code ?? 'INTERNAL',
+      field: json?.error?.details?.field,
+      reason: json?.error?.reason,
+      details: json?.error?.details,
+    };
   } catch {
     return { ok: false, code: 'NETWORK' };
   }

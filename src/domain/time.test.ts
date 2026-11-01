@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDays,
+  formatLocalDate,
   addMinutes,
   isKnownTimeZone,
   isValidLocalDate,
@@ -75,5 +76,13 @@ describe('validation and arithmetic', () => {
     const t = new Date('2027-01-10T04:30:00Z');
     expect(addMinutes(t, 150).toISOString()).toBe('2027-01-10T07:00:00.000Z');
     expect(minutesBetween(t, addMinutes(t, 480))).toBe(480);
+  });
+});
+
+describe('formatLocalDate', () => {
+  it('shows the calendar date itself, whatever the server zone, with Latin digits', () => {
+    expect(formatLocalDate('2027-01-10', 'en')).toMatch(/^Sun, 10 Jan,? 2027$/);
+    expect(formatLocalDate('2027-01-10', 'hi')).toMatch(/10/);
+    expect(formatLocalDate('2027-01-10', 'hi')).not.toMatch(/[०-९]/);
   });
 });

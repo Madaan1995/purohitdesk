@@ -104,3 +104,15 @@ export function addDays(localDate: string, days: number): string {
 export function minutesBetween(start: Date, end: Date): number {
   return Math.round((end.getTime() - start.getTime()) / 60_000);
 }
+
+/** "2027-01-10" → "Sun, 10 Jan 2027" / "रवि, 10 जन॰ 2027" (Latin digits in both languages, as in M5). */
+export function formatLocalDate(localDate: string, locale: 'hi' | 'en'): string {
+  if (!isValidLocalDate(localDate)) throw new RangeError('invalid local date');
+  return new Intl.DateTimeFormat(locale === 'hi' ? 'hi-IN-u-nu-latn' : 'en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${localDate}T00:00:00Z`));
+}
