@@ -102,12 +102,12 @@ WITH m6_tables AS (
   WHERE c.relnamespace = 'app'::regnamespace
     AND c.relname IN ('bookings', 'booking_assignments', 'calendar_reservations', 'booking_events')
 ),
-m6_commands (sig) AS (
-  VALUES ('app.create_booking(jsonb,boolean,text,text)'),
-         ('app.update_booking(uuid,integer,jsonb,text,text)'),
-         ('app.confirm_booking(uuid,integer,uuid[],text,text)'),
-         ('app.cancel_booking(uuid,integer,text,text,text)'),
-         ('app.complete_booking(uuid,integer,text,text)')
+-- Commands are found by name, not signature, so this script still runs after a later milestone changes a signature.
+m6_commands AS (
+  SELECT p.oid, p.prosecdef, p.proowner, p.proconfig
+  FROM pg_catalog.pg_proc p
+  WHERE p.pronamespace = 'app'::regnamespace
+    AND p.proname IN ('create_booking', 'update_booking', 'confirm_booking', 'cancel_booking', 'complete_booking')
 ),
 checks (n, check_name, ok) AS (
   VALUES
@@ -115,17 +115,15 @@ checks (n, check_name, ok) AS (
     (SELECT count(*) FROM m6_tables WHERE relrowsecurity AND relforcerowsecurity) = 4),
   (2, 'the five booking commands are SECURITY DEFINER, owned by app_domain, search_path pinned',
     (SELECT count(*) FROM m6_commands m
-     JOIN pg_catalog.pg_proc p ON p.oid = m.sig::regprocedure
-     JOIN pg_catalog.pg_roles o ON o.oid = p.proowner
-     WHERE p.prosecdef AND o.rolname = 'app_domain'
-       AND 'search_path=""' = ANY (coalesce(p.proconfig, '{}'::text[]))) = 5),
+     JOIN pg_catalog.pg_roles o ON o.oid = m.proowner
+     WHERE m.prosecdef AND o.rolname = 'app_domain'
+       AND 'search_path=""' = ANY (coalesce(m.proconfig, '{}'::text[]))) = 5),
   (3, 'app_runtime may execute the five commands and get_booking, but not _reserve_booking or _priest_conflicts',
-    NOT EXISTS (SELECT 1 FROM m6_commands m
-                WHERE NOT pg_catalog.has_function_privilege('app_runtime', m.sig, 'EXECUTE'))
+    (SELECT count(*) FROM m6_commands m WHERE pg_catalog.has_function_privilege('app_runtime', m.oid, 'EXECUTE')) = 5
     AND pg_catalog.has_function_privilege('app_runtime', 'app.get_booking(uuid)', 'EXECUTE')
-    AND NOT pg_catalog.has_function_privilege('app_runtime', 'app._reserve_booking(uuid)', 'EXECUTE')
-    AND NOT pg_catalog.has_function_privilege('app_runtime',
-                                              'app._priest_conflicts(uuid,tstzrange,tstzrange,uuid)', 'EXECUTE')),
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
+                    WHERE p.pronamespace = 'app'::regnamespace AND p.proname IN ('_reserve_booking', '_priest_conflicts')
+                      AND pg_catalog.has_function_privilege('app_runtime', p.oid, 'EXECUTE'))),
   (4, '_priest_conflicts is SECURITY DEFINER, owned by app_freebusy, search_path pinned, executable by app_domain',
     EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_roles o ON o.oid = p.proowner
             WHERE p.oid = 'app._priest_conflicts(uuid,tstzrange,tstzrange,uuid)'::regprocedure
