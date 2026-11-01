@@ -97,6 +97,12 @@ race "first session rolls back -> second confirms" \
   "$UB" "$OB" "$(printf "$CONFIRM" "$(fields B "2028-01-05T05:30:00Z" "2028-01-05T07:00:00Z")" "race-b-rb")" \
   '^CONFIRMED$'
 
+BUF=', "buffer_before_min": 30, "buffer_after_min": 30'
+race "buffer-only overlap is evaluated after the first commit (advisory lock)" \
+  "$(printf "$CONFIRM" "$(fields A "2028-01-07T04:30:00Z" "2028-01-07T05:30:00Z" "$BUF")" "race-a-buf")" COMMIT \
+  "$UB" "$OB" "$(printf "$CONFIRM" "$(fields B "2028-01-07T05:45:00Z" "2028-01-07T06:30:00Z" "$BUF")" "race-b-buf")" \
+  'ERROR:  BUFFER_CONFLICT'
+
 DUP="SELECT app.create_booking('$(fields A "2028-01-06T04:30:00Z" "2028-01-06T05:30:00Z" ', "title": "dup race"')',
   false, false, 'race-dup-key', repeat('b', 64)) ->> 'idempotent_replay';"
 race "same Idempotency-Key sent twice concurrently -> one booking, one replay" "$DUP" COMMIT "$UA" "$OA" "$DUP" '^true$'
@@ -115,8 +121,8 @@ check "zero overlapping ACTIVE reservations in the whole database" $? "overlaps=
 confirmed="$(psql -X -At -d "$DB" -c "
   SELECT count(*) FROM app.bookings b JOIN app.calendar_reservations r ON r.booking_id = b.id AND r.status = 'ACTIVE'
   WHERE b.org_id IN ('$OA', '$OB') AND b.status = 'CONFIRMED'")"
-[ "$confirmed" = 4 ]
-check "four confirmed race bookings hold exactly one ACTIVE reservation each" $? "confirmed=$confirmed"
+[ "$confirmed" = 5 ]
+check "five confirmed race bookings hold exactly one ACTIVE reservation each" $? "confirmed=$confirmed"
 
 echo "concurrency: $((n - fails)) passed, $fails failed"
 [ "$fails" -eq 0 ]
