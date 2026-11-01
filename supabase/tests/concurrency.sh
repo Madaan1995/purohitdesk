@@ -83,7 +83,7 @@ race() {
   rm -f "$s1"
 }
 
-CONFIRM="SELECT app.create_booking('%s', true, '%s', repeat('a', 64)) -> 'booking' ->> 'status';"
+CONFIRM="SELECT app.create_booking('%s', true, false, '%s', repeat('a', 64)) -> 'booking' ->> 'status';"
 for run in 1 2 3; do
   d="2028-01-0${run}"
   race "cross-org same priest, overlapping, run $run" \
@@ -98,7 +98,7 @@ race "first session rolls back -> second confirms" \
   '^CONFIRMED$'
 
 DUP="SELECT app.create_booking('$(fields A "2028-01-06T04:30:00Z" "2028-01-06T05:30:00Z" ', "title": "dup race"')',
-  false, 'race-dup-key', repeat('b', 64)) ->> 'idempotent_replay';"
+  false, false, 'race-dup-key', repeat('b', 64)) ->> 'idempotent_replay';"
 race "same Idempotency-Key sent twice concurrently -> one booking, one replay" "$DUP" COMMIT "$UA" "$OA" "$DUP" '^true$'
 
 count="$(psql -X -At -d "$DB" -c "SELECT count(*) FROM app.bookings WHERE title = 'dup race'")"

@@ -8,10 +8,11 @@ SELECT test.is((
   WHERE p.pronamespace = 'app'::regnamespace AND has_function_privilege('app_runtime', p.oid, 'EXECUTE')),
   'app._booking_out(uuid), app.bootstrap_practice(text,uuid[],text,text), '
   'app.cancel_booking(uuid,integer,text,text,text), app.complete_booking(uuid,integer,text,text), '
-  'app.confirm_booking(uuid,integer,uuid[],text,text), app.create_booking(jsonb,boolean,text,text), '
+  'app.confirm_booking(uuid,integer,uuid[],boolean,text,text), app.create_booking(jsonb,boolean,boolean,text,text), '
   'app.create_customer(text,text,text,text,text), '
   'app.current_actor_id(), app.current_member_has(text), app.current_member_role(), app.current_tenant_id(), '
   'app.ensure_current_user(text,text), app.get_booking(uuid), app.is_active_member_of(uuid), '
+  'app.reschedule_booking(uuid,integer,jsonb,text,boolean,text,text), '
   'app.save_offering(uuid,integer,jsonb,text,text), app.save_samagri_template(uuid,integer,uuid,jsonb,text,text), '
   'app.update_booking(uuid,integer,jsonb,text,text), '
   'app.update_customer(uuid,integer,jsonb,text,text), app.update_my_profile(text,text), '
@@ -27,8 +28,8 @@ SELECT test.is((
   'create_customer=app_domain, '
   'current_member_has=app_authz, current_member_role=app_authz, current_priest_profile_id=app_authz, '
   'ensure_current_user=app_bootstrap, is_active_member_of=app_authz, ops_add_member=app_operator, '
-  'ops_revoke_member=app_operator, save_offering=app_domain, save_samagri_template=app_domain, '
-  'update_booking=app_domain, '
+  'ops_revoke_member=app_operator, reschedule_booking=app_domain, save_offering=app_domain, '
+  'save_samagri_template=app_domain, update_booking=app_domain, '
   'update_customer=app_domain, update_my_profile=app_domain, update_organization=app_domain, '
   'update_priest_settings=app_domain',
   'SECURITY DEFINER functions and their NOLOGIN owners');
