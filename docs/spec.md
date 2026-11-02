@@ -723,7 +723,7 @@ Every tenant table that other tenant tables reference has `UNIQUE (id, org_id)`,
 | `app_domain` | no | command functions | the specific INSERT/UPDATE/DELETE each command needs, through RLS scoped to the current tenant | see other tenants; bypass RLS |
 | `app_authz` | no | `current_member_role`, `current_member_has`, `is_active_member_of`, `current_priest_profile_id`, `assert_permission` | read only the actor's membership rows | anything else |
 | `app_bootstrap` | no | `ensure_current_user`, `bootstrap_practice` | insert rows owned by the actor (`linked_via = 'BOOTSTRAP'`) | link other people; touch existing organizations |
-| `app_freebusy` | no | `_priest_conflicts`, `priest_busy` | column-level SELECT on `id, org_id, priest_profile_id, booking_id, kind, status, span, buffer_span` of ACTIVE reservations in any org (no notes, creators); its two functions first verify the priest is linked to the caller's org and return other orgs' spans without ids | read bookings, customers, or anything else |
+| `app_freebusy` | no | `_priest_conflicts`, `priest_busy` | column-level SELECT on `id, org_id, priest_profile_id, booking_id, kind, status, span, buffer_span` of ACTIVE reservations in any org, **only of priest profiles linked to `current_tenant_id()`** and only while the actor is an ACTIVE member there (RLS policy `calendar_reservations_freebusy_read`; no notes, creators or priest-link ids; founder review, 2 Nov 2026); its two functions first verify the priest is linked to the caller's org and return other orgs' spans without ids | read bookings, customers, or anything else |
 | `app_maintenance` | no | `run_retention` | purge transcripts, time out stuck voice jobs, delete expired idempotency keys and old audit rows | anything else; it is executable only by the migration owner (Supabase Cron) |
 | `app_operator` (founder review, 29 Oct 2026) | no | `ops_add_member`, `ops_revoke_member` | add, re-role or revoke a non-owner membership (its policies admit no OWNER row); read organization ids/names/status and app user ids/status | anything else; executable only by the migration owner (operator scripts in `supabase/ops/`) |
 
@@ -741,7 +741,7 @@ The sub-selects make PostgreSQL evaluate each helper once per statement (InitPla
 
 | Table group | `app_runtime` | `app_domain` | Others |
 | --- | --- | --- | --- |
-| Tenant tables | SELECT where T | ALL where T | `app_freebusy` SELECT ACTIVE reservations (any org; only reachable through its two functions, which check the link and strip ids); `app_maintenance` retention rows only |
+| Tenant tables | SELECT where T | ALL where T | `app_freebusy` SELECT ACTIVE reservations (any org, but only of priest profiles linked to the current tenant, enforced by RLS; only reachable through its two functions, which also check the link and strip ids); `app_maintenance` retention rows only |
 | `voice_extractions` | SELECT own rows (`requested_by = actor`) where T | ALL where T | `app_maintenance` rows older than 10 minutes |
 | `audit_log` | SELECT where T and `AUDIT_READ` | INSERT where T | `app_maintenance` DELETE > 12 months |
 | `organizations` | SELECT where active member | UPDATE where T | `app_bootstrap` INSERT (created_by = actor) |
