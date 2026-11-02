@@ -281,7 +281,9 @@ Punjabi names stay NULL until P1.
 
 ---
 
-## M8 — Agenda, availability and calendar blocks (T-13, T-16)
+## M8 — Agenda, availability and calendar blocks (T-13, T-16) (built, not founder-verified)
+
+*Status: built overnight on branch `m8-agenda-availability`; proposal `docs/proposals/m8.md` (every decision AUTO-DECIDED, awaiting founder review). Migration, `m8_checks.sql`, SQL tests, API, OpenAPI, agenda page and tests done; real output in the PR.*
 
 **Delivers:** `priest_busy`, `create_block`, `release_block`; `GET /availability` (≤ 62 days), `POST /blocks`, `DELETE /blocks/{id}`; agenda day and week views in local dates, "time to fix" list for date-only drafts, other practices' busy time shown as "Busy" without details; create/release blocks.
 **Tables:** none new (blocks are `calendar_reservations` rows). **Env vars:** none.

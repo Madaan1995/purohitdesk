@@ -4,6 +4,7 @@ import {
   BOOKING_TRANSITIONS,
   canTransition,
   formatBookingNumber,
+  isBlockedTimeConflict,
   isTerminal,
   RESCHEDULE_REASON_CODES,
   travelGapMinutes,
@@ -65,5 +66,16 @@ describe('RESCHEDULE_REASON_CODES', () => {
     const yaml = readFileSync('api/openapi.yaml', 'utf8');
     const m = /RescheduleReasonCode:\s*\n\s*type: string\s*\n\s*enum: \[([^\]]+)\]/.exec(yaml);
     expect(m?.[1].split(',').map((s) => s.trim())).toEqual([...RESCHEDULE_REASON_CODES]);
+  });
+});
+
+describe('isBlockedTimeConflict ("the priest has blocked this time")', () => {
+  const span = { organization_priest_id: 'p', starts_at: '2027-06-01T04:30:00Z', ends_at: '2027-06-01T05:30:00Z' };
+  it('is true only when every conflict is one of the practice\'s own blocks', () => {
+    expect(isBlockedTimeConflict([{ ...span, same_org: true, block: true }])).toBe(true);
+    expect(isBlockedTimeConflict([{ ...span, same_org: true, block: true }, { ...span, same_org: true, block: true }])).toBe(true);
+    expect(isBlockedTimeConflict([{ ...span, same_org: true, block: true }, { ...span, same_org: true, booking_id: 'b' }])).toBe(false);
+    expect(isBlockedTimeConflict([{ ...span, same_org: false }])).toBe(false);
+    expect(isBlockedTimeConflict([])).toBe(false);
   });
 });

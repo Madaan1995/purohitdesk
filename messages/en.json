@@ -11,7 +11,8 @@
     "home": "Home",
     "customers": "Customers",
     "settings": "Settings",
-    "bookings": "Bookings"
+    "bookings": "Bookings",
+    "agenda": "Agenda"
   },
   "signIn": {
     "title": "Sign in",
@@ -228,7 +229,9 @@
     "reschedule": "Change time",
     "rescheduleTitle": "Change the booking's time",
     "reasonCode": "Reason for the change",
-    "rescheduleHint": "The old time is released only when the new time is free."
+    "rescheduleHint": "The old time is released only when the new time is free.",
+    "blockedTime": "The priest has blocked this time.",
+    "blockLabel": "blocked time"
   },
   "bookingStatus": {
     "DRAFT": "Draft",
@@ -243,5 +246,29 @@
     "PRIEST_CHANGED": "Priest changed",
     "CORRECTION": "Correction",
     "OTHER": "Other reason"
+  },
+  "agenda": {
+    "title": "Agenda",
+    "day": "Day",
+    "week": "Week",
+    "today": "Today",
+    "prev": "Previous",
+    "next": "Next",
+    "timeToFix": "Time to fix",
+    "nothing": "No ceremonies or blocked time.",
+    "busyOther": "Busy (another practice)",
+    "blocked": "Blocked",
+    "addBlock": "Block time",
+    "blockDate": "Date",
+    "blockFrom": "From",
+    "blockTo": "To",
+    "allDay": "All day",
+    "blockNote": "Note (optional)",
+    "blockSave": "Block time",
+    "blockSaving": "Blocking…",
+    "release": "Remove block",
+    "confirmRelease": "Remove this blocked time?",
+    "invalidRange": "This time does not look right.",
+    "priest": "Priest"
   }
 }

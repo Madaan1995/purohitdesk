@@ -25,6 +25,9 @@ export async function AppHeader({ signedIn }: { signedIn: boolean }) {
           <Link href="/" className="flex min-h-11 items-center rounded-lg px-3 text-base text-brand underline">
             {t('nav.home')}
           </Link>
+          <Link href="/agenda" className="flex min-h-11 items-center rounded-lg px-3 text-base text-brand underline">
+            {t('nav.agenda')}
+          </Link>
           <Link href="/bookings" className="flex min-h-11 items-center rounded-lg px-3 text-base text-brand underline">
             {t('nav.bookings')}
           </Link>

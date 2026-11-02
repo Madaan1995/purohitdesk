@@ -817,7 +817,7 @@ Editing rules (`update_booking`): while DRAFT every field may change (title, cus
 4. The constraint cannot be bypassed: the API role cannot write tables; every BOOKING reservation is inserted by `_reserve_booking`, every BLOCK by `create_block` (same per-priest advisory lock, no buffer check); there is no override flag.
 5. The deferred invariant triggers make it impossible to commit a CONFIRMED/COMPLETED booking without covering reservations for every assigned priest, or a DRAFT/CANCELLED booking that still holds one (PD500).
 
-Concurrency (EXECUTED, `concurrency.sh`): two sessions confirming the same priest at overlapping times in **different organizations** — the second waits (~1.2 s in the harness, which holds the first transaction open) and then fails with `BOOKING_CONFLICT`; if the first rolls back, the second commits. Run 3 times, plus a rollback variant, a buffer-only race and an idempotency race; reschedule vs confirm in both directions (a refused reschedule keeps its original slot), reschedule into a buffer-only overlap, and multi-priest bookings with overlapping priest sets (staggered, five simultaneous starts, and a lock-order probe: a session waiting on the lower profile's lock does not hold the higher one, so opposite list orders cannot deadlock); zero overlapping ACTIVE reservations remain.
+Concurrency (EXECUTED, `concurrency.sh`): two sessions confirming the same priest at overlapping times in **different organizations** — the second waits (~1.2 s in the harness, which holds the first transaction open) and then fails with `BOOKING_CONFLICT`; if the first rolls back, the second commits. Run 3 times, plus a rollback variant, a buffer-only race and an idempotency race; reschedule vs confirm in both directions (a refused reschedule keeps its original slot), reschedule into a buffer-only overlap, multi-priest bookings with overlapping priest sets (staggered, five simultaneous starts, and a lock-order probe: a session waiting on the lower profile's lock does not hold the higher one, so opposite list orders cannot deadlock), block vs booking in both directions, and block vs block across and within a practice; zero overlapping ACTIVE reservations remain.
 
 ## 3. Reservation algorithm (`_reserve_booking`)
 
@@ -871,7 +871,7 @@ In P0 the only link is the priest's own practice (BOOTSTRAP). Linking to another
 
 ## 8. Calendar blocks
 
-`create_block(priest, starts_at, ends_at, note)` inserts a `BLOCK` reservation (≤ 31 days) that competes in the same exclusion constraint; `release_block` releases it (history kept). Permission BLOCK_MANAGE, or BLOCK_MANAGE_OWN for the priest's own calendar (EXECUTED `04`).
+`create_block(priest, starts_at, ends_at, note)` inserts a `BLOCK` reservation (≤ 31 days) that competes in the same exclusion constraint; an overlap with a ceremony **or another block** is `BOOKING_CONFLICT` with `details.conflicts` (`block: true` for the practice's own blocks: "इस समय पंडित जी ने समय रोका हुआ है"). `release_block` releases it (history kept: `released_at`, `released_by`; audited as `BLOCK_RELEASED` with ids and times, never the note; founder review, 2 Nov 2026). Permission BLOCK_MANAGE, or BLOCK_MANAGE_OWN for the priest's own calendar (EXECUTED `04`).
 
 ## 9. Idempotency
 
@@ -892,7 +892,7 @@ Versioned resources (bookings, customers, offerings, samagri templates, organiza
 | `booking_events` | CREATED, EDITED (field names only), CONFIRMED, RESCHEDULED (from/to times, reason code), CANCELLED (count released), COMPLETED, BUFFER_OVERLAP_ACKNOWLEDGED, SAMAGRI_ATTACHED, SHARE_PREPARED, PAYMENT_RECORDED/REVERSED, PII_ERASED; actor, timestamp | append-only, no free text |
 | `calendar_reservations` | every hold ever made, with release time | ACTIVE→RELEASED only |
 | `payment_entries` | every money record | append-only; only `note`/`external_ref` may be erased to NULL |
-| `audit_log` | organization-level actions (org updated, block created, customer erased, export started) | append-only; purged after 12 months |
+| `audit_log` | organization-level actions (org updated, block created, block released, customer erased, export started); block rows hold the priest link id and the times, never the note | append-only; purged after 12 months |
 
 ---
 
@@ -1416,7 +1416,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 | Kind | P0 | P1 |
 | --- | --- | --- |
 | Domain history | `booking_events` written in the same transaction as each command (12 event types, `docs/05` §11) | unchanged |
-| Organization audit | `audit_log` (ORG_UPDATED, BLOCK_CREATED, CUSTOMER_ERASED, EXPORT) | + MEMBER_INVITED, MEMBER_REVOKED, PRIEST_LINKED |
+| Organization audit | `audit_log` (ORG_UPDATED, BLOCK_CREATED, BLOCK_RELEASED, CUSTOMER_ERASED, EXPORT) | + MEMBER_INVITED, MEMBER_REVOKED, PRIEST_LINKED |
 | Integration events | none (no consumer) | `app.outbox` rows written by commands: `booking.confirmed`, `booking.rescheduled`, `booking.cancelled`, `reminder.due` (payload ids only, `dedupe_key`) |
 | Scheduled jobs | `app.run_retention()` hourly via Supabase Cron | `dispatch_due_messages()` every minute; subscription reconciliation daily |
 | Webhooks | none | WhatsApp (GET verify + HMAC POST), billing provider (signature + event id dedupe) |

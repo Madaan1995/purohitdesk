@@ -99,6 +99,8 @@ export interface BookingConflict {
   ends_at: string;
   same_org: boolean;
   booking_id?: string;
+  /** true for a calendar block of the same practice (M8); other practices' blocks stay anonymous. */
+  block?: true;
 }
 
 /** reschedule_booking reason codes (the SQL list in the M7 migration; no free text in history, spec defect 10). */
@@ -111,6 +113,14 @@ export const RESCHEDULE_REASON_CODES = [
   'OTHER',
 ] as const;
 export type RescheduleReasonCode = (typeof RESCHEDULE_REASON_CODES)[number];
+
+/**
+ * A BOOKING_CONFLICT made only of the practice's own calendar blocks (`block: true`, M8): the UI says "the priest has
+ * blocked this time" instead of "another ceremony at this time".
+ */
+export function isBlockedTimeConflict(conflicts: readonly BookingConflict[]): boolean {
+  return conflicts.length > 0 && conflicts.every((c) => c.block === true);
+}
 
 /**
  * The shortest travel time, in whole minutes, between a ceremony [startsAt, endsAt) and the busy spans of a

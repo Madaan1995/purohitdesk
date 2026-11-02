@@ -8,10 +8,13 @@ SELECT test.is((
   WHERE p.pronamespace = 'app'::regnamespace AND has_function_privilege('app_runtime', p.oid, 'EXECUTE')),
   'app._booking_out(uuid), app.bootstrap_practice(text,uuid[],text,text), '
   'app.cancel_booking(uuid,integer,text,text,text), app.complete_booking(uuid,integer,text,text), '
-  'app.confirm_booking(uuid,integer,uuid[],boolean,text,text), app.create_booking(jsonb,boolean,boolean,text,text), '
+  'app.confirm_booking(uuid,integer,uuid[],boolean,text,text), '
+  'app.create_block(uuid,timestamp with time zone,timestamp with time zone,text,text,text), '
+  'app.create_booking(jsonb,boolean,boolean,text,text), '
   'app.create_customer(text,text,text,text,text), '
   'app.current_actor_id(), app.current_member_has(text), app.current_member_role(), app.current_tenant_id(), '
   'app.ensure_current_user(text,text), app.get_booking(uuid), app.is_active_member_of(uuid), '
+  'app.priest_busy(uuid,timestamp with time zone,timestamp with time zone), app.release_block(uuid,text,text), '
   'app.reschedule_booking(uuid,integer,jsonb,text,boolean,text,text), '
   'app.save_offering(uuid,integer,jsonb,text,text), app.save_samagri_template(uuid,integer,uuid,jsonb,text,text), '
   'app.update_booking(uuid,integer,jsonb,text,text), '
@@ -24,11 +27,13 @@ SELECT test.is((
   FROM pg_proc p JOIN pg_roles o ON o.oid = p.proowner
   WHERE p.pronamespace = 'app'::regnamespace AND p.prosecdef),
   '_priest_conflicts=app_freebusy, assert_permission=app_authz, bootstrap_practice=app_bootstrap, '
-  'cancel_booking=app_domain, complete_booking=app_domain, confirm_booking=app_domain, create_booking=app_domain, '
+  'cancel_booking=app_domain, complete_booking=app_domain, confirm_booking=app_domain, create_block=app_domain, '
+  'create_booking=app_domain, '
   'create_customer=app_domain, '
   'current_member_has=app_authz, current_member_role=app_authz, current_priest_profile_id=app_authz, '
   'ensure_current_user=app_bootstrap, is_active_member_of=app_authz, ops_add_member=app_operator, '
-  'ops_revoke_member=app_operator, reschedule_booking=app_domain, save_offering=app_domain, '
+  'ops_revoke_member=app_operator, priest_busy=app_freebusy, release_block=app_domain, reschedule_booking=app_domain, '
+  'save_offering=app_domain, '
   'save_samagri_template=app_domain, update_booking=app_domain, '
   'update_customer=app_domain, update_my_profile=app_domain, update_organization=app_domain, '
   'update_priest_settings=app_domain',

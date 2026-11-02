@@ -11,7 +11,8 @@
     "home": "होम",
     "customers": "यजमान",
     "settings": "सेटिंग",
-    "bookings": "बुकिंग"
+    "bookings": "बुकिंग",
+    "agenda": "एजेंडा"
   },
   "signIn": {
     "title": "साइन इन करें",
@@ -228,7 +229,9 @@
     "reschedule": "समय बदलें",
     "rescheduleTitle": "बुकिंग का समय बदलें",
     "reasonCode": "समय बदलने का कारण",
-    "rescheduleHint": "नया समय मिलने पर ही पुराना समय छूटेगा।"
+    "rescheduleHint": "नया समय मिलने पर ही पुराना समय छूटेगा।",
+    "blockedTime": "इस समय पंडित जी ने समय रोका हुआ है।",
+    "blockLabel": "रोका हुआ समय"
   },
   "bookingStatus": {
     "DRAFT": "ड्राफ़्ट",
@@ -243,5 +246,29 @@
     "PRIEST_CHANGED": "पंडित जी बदले",
     "CORRECTION": "गलती सुधारी",
     "OTHER": "कोई और कारण"
+  },
+  "agenda": {
+    "title": "एजेंडा",
+    "day": "दिन",
+    "week": "हफ़्ता",
+    "today": "आज",
+    "prev": "पिछला",
+    "next": "अगला",
+    "timeToFix": "समय तय करना है",
+    "nothing": "कोई पूजा या रोका हुआ समय नहीं।",
+    "busyOther": "व्यस्त (दूसरी प्रैक्टिस)",
+    "blocked": "समय रोका गया",
+    "addBlock": "समय रोकें",
+    "blockDate": "तारीख़",
+    "blockFrom": "कब से",
+    "blockTo": "कब तक",
+    "allDay": "पूरा दिन",
+    "blockNote": "नोट (वैकल्पिक)",
+    "blockSave": "समय रोकें",
+    "blockSaving": "रोका जा रहा है…",
+    "release": "रोक हटाएँ",
+    "confirmRelease": "क्या यह रोका हुआ समय हटा दें?",
+    "invalidRange": "समय सही नहीं लगता।",
+    "priest": "पंडित जी"
   }
 }

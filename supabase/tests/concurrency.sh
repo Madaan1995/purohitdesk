@@ -207,6 +207,36 @@ check "per-priest locks are taken in profile order: a waiter on the lower lock d
   "probe higher lock free=$probe | waiter: $(head -c 60 "$waiter")"
 rm -f "$holder" "$waiter"
 
+# ---------------------------------------------------------------- M8: calendar blocks (same per-priest lock)
+# block sql: <priest link> <start> <end> <key>
+BLOCK="SELECT app.create_block('%s', '%s', '%s', NULL, '%s', repeat('a', 64)) -> 'block' ->> 'status';"
+
+race "block (A) holds the time -> concurrent booking (B) waits, then BOOKING_CONFLICT" \
+  "$(printf "$BLOCK" "$LA" "2028-03-01T04:30:00Z" "2028-03-01T06:30:00Z" race-blk-1a)" COMMIT \
+  "$UB" "$OB" "$(printf "$CONFIRM" "$(fields B "2028-03-01T05:30:00Z" "2028-03-01T07:00:00Z")" race-blk-1b)" \
+  'ERROR:  BOOKING_CONFLICT'
+
+race "booking (A) holds the time -> concurrent block (B) waits, then BOOKING_CONFLICT" \
+  "$(printf "$CONFIRM" "$(fields A "2028-03-02T04:30:00Z" "2028-03-02T06:30:00Z")" race-blk-2a)" COMMIT \
+  "$UB" "$OB" "$(printf "$BLOCK" "$LB" "2028-03-02T05:00:00Z" "2028-03-02T05:30:00Z" race-blk-2b)" \
+  'ERROR:  BOOKING_CONFLICT'
+
+race "block (A) vs block (B), overlapping: second waits, then BOOKING_CONFLICT (not the bare constraint)" \
+  "$(printf "$BLOCK" "$LA" "2028-03-03T04:30:00Z" "2028-03-03T06:30:00Z" race-blk-3a)" COMMIT \
+  "$UB" "$OB" "$(printf "$BLOCK" "$LB" "2028-03-03T05:00:00Z" "2028-03-03T07:00:00Z" race-blk-3b)" \
+  'ERROR:  BOOKING_CONFLICT'
+
+race "block vs block in the same practice: second waits, then BOOKING_CONFLICT naming the block" \
+  "$(printf "$BLOCK" "$LA" "2028-03-04T04:30:00Z" "2028-03-04T06:30:00Z" race-blk-4a)" COMMIT \
+  "$UA" "$OA" "$(printf "$BLOCK" "$LA" "2028-03-04T05:00:00Z" "2028-03-04T07:00:00Z" race-blk-4b)" \
+  '"block": true'
+
+blocks="$(psql -X -At -d "$DB" -c "
+  SELECT count(*) FROM app.calendar_reservations
+  WHERE kind = 'BLOCK' AND status = 'ACTIVE' AND org_id IN ('$OA', '$OB') AND lower(span) >= '2028-03-01'")"
+[ "$blocks" = 3 ]
+check "exactly the three winning blocks are stored" $? "blocks=$blocks"
+
 count="$(psql -X -At -d "$DB" -c "SELECT count(*) FROM app.bookings WHERE title = 'dup race'")"
 [ "$count" = 1 ]
 check "exactly one 'dup race' booking stored" $? "count=$count"
@@ -226,8 +256,8 @@ bad="$(psql -X -At -d "$DB" -c "
                 THEN (SELECT count(*) FROM app.booking_assignments a WHERE a.booking_id = b.id) ELSE 0 END")"
 confirmed="$(psql -X -At -d "$DB" -c "
   SELECT count(*) FROM app.bookings b WHERE b.org_id IN ('$OA', '$OB') AND b.status = 'CONFIRMED'")"
-[ "$bad" = 0 ] && [ "$confirmed" = 17 ]
-check "17 confirmed race bookings, each holding exactly one ACTIVE reservation per assigned priest" $? \
+[ "$bad" = 0 ] && [ "$confirmed" = 18 ]
+check "18 confirmed race bookings, each holding exactly one ACTIVE reservation per assigned priest" $? \
   "confirmed=$confirmed mismatched=$bad"
 
 echo "concurrency: $((n - fails)) passed, $fails failed"
