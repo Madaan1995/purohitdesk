@@ -118,6 +118,16 @@ for f in supabase/tests/[0-9][0-9]_*.sql; do
   fi
 done
 
+echo "== operator scripts (supabase/ops) as pd_migrator"
+set +e
+ops_out="$(bash supabase/tests/ops_smoke.sh)"
+ops_status=$?
+set -e
+echo "$ops_out"
+passed=$((passed + $(echo "$ops_out" | grep -cE '^ok ' || true)))
+failed=$((failed + $(echo "$ops_out" | grep -cE '^not ok ' || true)))
+if [ "$ops_status" -ne 0 ] && ! echo "$ops_out" | grep -qE '^not ok '; then failures=$((failures + 1)); fi
+
 echo "== SQL tests: $passed passed, $failed failed; checks/aborts with problems: $failures"
 if [ "$failed" -ne 0 ] || [ "$failures" -ne 0 ]; then
   exit 1

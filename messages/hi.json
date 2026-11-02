@@ -1,0 +1,86 @@
+{
+  "app": {
+    "name": "पुरोहित डेस्क",
+    "nameLatin": "PurohitDesk"
+  },
+  "nav": {
+    "signOut": "साइन आउट",
+    "switchLanguage": "English",
+    "switchPractice": "प्रैक्टिस बदलें",
+    "addPractice": "नई प्रैक्टिस जोड़ें"
+  },
+  "signIn": {
+    "title": "साइन इन करें",
+    "intro": "पंडित जी की बुकिंग, यजमान और दक्षिणा — एक जगह।",
+    "google": "Google से साइन इन करें",
+    "failed": "साइन इन नहीं हो पाया। फिर से कोशिश करें।",
+    "notConfigured": "साइन इन अभी चालू नहीं है।"
+  },
+  "onboarding": {
+    "title": "अपनी प्रैक्टिस बनाएँ",
+    "practiceName": "प्रैक्टिस का नाम",
+    "practiceNameHint": "जैसे: पंडित रमेश शर्मा",
+    "ceremonies": "आप कौन-सी पूजाएँ कराते हैं?",
+    "ceremoniesHint": "कम से कम एक चुनें। बाद में बदल सकते हैं।",
+    "minutes": "{count} मिनट",
+    "submit": "प्रैक्टिस बनाएँ",
+    "saving": "बन रही है…",
+    "quota": "आप अधिकतम 3 प्रैक्टिस बना सकते हैं।",
+    "back": "वापस"
+  },
+  "home": {
+    "currentPractice": "आपकी प्रैक्टिस",
+    "timezone": "समय क्षेत्र",
+    "yourRole": "आपकी भूमिका",
+    "permissions": "आप ये कर सकते हैं"
+  },
+  "roles": {
+    "OWNER": "मालिक",
+    "ADMIN": "प्रबंधक",
+    "PRIEST": "पंडित",
+    "STAFF": "सहायक",
+    "READ_ONLY": "केवल देखना"
+  },
+  "permissions": {
+    "ORG_READ": "प्रैक्टिस देखना",
+    "ORG_SETTINGS": "प्रैक्टिस की सेटिंग बदलना",
+    "MEMBER_MANAGE": "सदस्य जोड़ना-हटाना",
+    "AUDIT_READ": "ऑडिट लॉग देखना",
+    "EXPORT_DATA": "डेटा डाउनलोड करना",
+    "CUSTOMER_READ": "यजमान देखना",
+    "CUSTOMER_WRITE": "यजमान जोड़ना और बदलना",
+    "CUSTOMER_ERASE": "यजमान का डेटा मिटाना",
+    "CATALOG_WRITE": "पूजाएँ और सामग्री सूची बदलना",
+    "BOOKING_READ": "बुकिंग देखना",
+    "BOOKING_CREATE": "बुकिंग बनाना",
+    "BOOKING_EDIT": "बुकिंग बदलना",
+    "BOOKING_CONFIRM": "बुकिंग पक्की करना",
+    "BOOKING_CONFIRM_OWN": "अपनी बुकिंग पक्की करना",
+    "BOOKING_CANCEL": "बुकिंग रद्द करना",
+    "BOOKING_CANCEL_OWN": "अपनी बुकिंग रद्द करना",
+    "BOOKING_COMPLETE": "बुकिंग पूरी करना",
+    "BOOKING_COMPLETE_OWN": "अपनी बुकिंग पूरी करना",
+    "BLOCK_MANAGE": "कैलेंडर में समय रोकना",
+    "BLOCK_MANAGE_OWN": "अपने कैलेंडर में समय रोकना",
+    "PAYMENT_RECORD": "दक्षिणा दर्ज करना",
+    "PAYMENT_REVERSE": "दक्षिणा की एंट्री वापस करना",
+    "SHARE_MESSAGE": "बुकिंग व्हाट्सऐप पर भेजना",
+    "VOICE_USE": "आवाज़ से बुकिंग"
+  },
+  "errors": {
+    "UNAUTHENTICATED": "कृपया फिर से साइन इन करें।",
+    "FORBIDDEN": "आपको यह करने की अनुमति नहीं है।",
+    "NOT_FOUND": "यह नहीं मिला।",
+    "VERSION_CONFLICT": "किसी और ने पहले बदल दिया। पेज रीलोड करें।",
+    "INVALID_TRANSITION": "अभी यह बदलाव नहीं हो सकता।",
+    "IDEMPOTENCY_REUSE": "यह अनुरोध पहले अलग जानकारी के साथ भेजा जा चुका है। पेज रीलोड करें।",
+    "BOOKING_CONFLICT": "इस समय पंडित जी की दूसरी पूजा है।",
+    "BUFFER_CONFLICT": "आने-जाने का समय दूसरी बुकिंग से टकरा रहा है।",
+    "DUPLICATE": "यह पहले से मौजूद है।",
+    "VALIDATION_FAILED": "कृपया जानकारी जाँचें।",
+    "QUOTA_EXCEEDED": "सीमा पूरी हो गई है।",
+    "INTERNAL": "कुछ गड़बड़ हुई। फिर से कोशिश करें।",
+    "VENDOR_UNAVAILABLE": "सेवा अभी उपलब्ध नहीं है। फिर से कोशिश करें।",
+    "NETWORK": "इंटरनेट कनेक्शन जाँचें और फिर से कोशिश करें।"
+  }
+}

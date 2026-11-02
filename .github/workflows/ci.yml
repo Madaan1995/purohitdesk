@@ -29,7 +29,7 @@ jobs:
       - run: npm run build
 
   database:
-    name: SQL tests (throwaway Postgres)
+    name: SQL and API integration tests (throwaway Postgres)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -52,5 +52,16 @@ jobs:
       PGPASSWORD: postgres
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
       - run: psql --version
       - run: bash supabase/tests/run.sh
+      # Route handlers against the same throwaway database, connected as a real app_runtime login.
+      - run: psql -d pd_test -c "ALTER ROLE app_runtime LOGIN PASSWORD 'app_runtime'"
+      - run: npm ci
+      - run: npm run test:integration
+        env:
+          PGDATABASE: pd_test
+          DATABASE_URL: postgres://app_runtime:app_runtime@localhost:5432/pd_test

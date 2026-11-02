@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import Home from "@/app/page";
+import { SiteFooter } from "@/app/_components/SiteFooter";
 import PrivacyPage from "@/app/privacy/page";
 import TermsPage from "@/app/terms/page";
 
@@ -23,8 +23,8 @@ describe("public legal pages", () => {
     expect(render(PrivacyPage)).toContain("name and email address");
   });
 
-  it("home page footer links both pages", () => {
-    const html = render(Home);
+  it("site footer (home and sign-in pages) links both pages", () => {
+    const html = render(SiteFooter);
     expect(html).toContain('href="/privacy"');
     expect(html).toContain('href="/terms"');
   });

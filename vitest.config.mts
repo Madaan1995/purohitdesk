@@ -10,5 +10,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+    // Integration tests need a throwaway database: npm run test:integration.
+    exclude: ["tests/integration/**", "node_modules/**"],
   },
 });
