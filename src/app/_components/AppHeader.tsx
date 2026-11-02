@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+import Link from 'next/link';
 import { LanguageToggle } from './LanguageToggle';
 
 export async function AppHeader({ signedIn }: { signedIn: boolean }) {
@@ -19,6 +20,16 @@ export async function AppHeader({ signedIn }: { signedIn: boolean }) {
           </form>
         )}
       </div>
+      {signedIn && (
+        <nav className="flex w-full gap-2">
+          <Link href="/" className="flex min-h-11 items-center rounded-lg px-3 text-base text-brand underline">
+            {t('nav.home')}
+          </Link>
+          <Link href="/customers" className="flex min-h-11 items-center rounded-lg px-3 text-base text-brand underline">
+            {t('nav.customers')}
+          </Link>
+        </nav>
+      )}
     </header>
   );
 }

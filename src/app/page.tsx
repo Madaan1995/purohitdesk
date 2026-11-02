@@ -1,22 +1,12 @@
 import { AppHeader } from '@/app/_components/AppHeader';
 import { PracticeSwitcher } from '@/app/_components/PracticeSwitcher';
 import { SiteFooter } from '@/app/_components/SiteFooter';
-import { currentIdentity } from '@/app/_lib/page-auth';
-import { loadSession } from '@/app/_lib/session';
+import { requirePractice } from '@/app/_lib/page-auth';
 import { getTranslations } from 'next-intl/server';
-import { cookies } from 'next/headers';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 
 export default async function Home() {
-  const identity = await currentIdentity();
-  if (!identity) redirect('/sign-in');
-  const store = await cookies();
-  const session = await loadSession(identity, store.get('NEXT_LOCALE')?.value ?? null);
-  if (session.memberships.length === 0) redirect('/onboarding');
-
-  const selected = store.get('pd_tenant')?.value;
-  const current = session.memberships.find((m) => m.organization.id === selected) ?? session.memberships[0];
+  const { session, current } = await requirePractice();
   const t = await getTranslations();
   const owned = session.memberships.filter((m) => m.role === 'OWNER').length;
 

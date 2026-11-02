@@ -7,7 +7,9 @@
     "signOut": "Sign out",
     "switchLanguage": "हिन्दी",
     "switchPractice": "Switch practice",
-    "addPractice": "Add another practice"
+    "addPractice": "Add another practice",
+    "home": "Home",
+    "customers": "Customers"
   },
   "signIn": {
     "title": "Sign in",
@@ -82,5 +84,27 @@
     "INTERNAL": "Something went wrong. Please try again.",
     "VENDOR_UNAVAILABLE": "The service is unavailable. Please try again.",
     "NETWORK": "Check your internet connection and try again."
+  },
+  "customers": {
+    "title": "Customers",
+    "newTitle": "New customer",
+    "searchLabel": "Search by name or phone number",
+    "search": "Search",
+    "add": "Add customer",
+    "none": "No customers found.",
+    "loadMore": "Show more",
+    "name": "Name",
+    "phone": "Phone number (optional)",
+    "phoneHint": "For example 98765 43210",
+    "address": "Address (optional)",
+    "noPhone": "No phone",
+    "invalidPhone": "This phone number does not look right.",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved.",
+    "edit": "Edit details",
+    "duplicates": "Other customers with this phone number:",
+    "duplicatesHint": "Both are saved — a household may share one phone.",
+    "back": "All customers"
   }
 }
