@@ -12,6 +12,7 @@ npm run build
 Rules
 Do not invent tables, columns, env vars, roles or features. If the spec doesn't cover it, stop and ask me.
 Never connect to any real or shared database or use real DB credentials. A throwaway Postgres (local sandbox or CI container) for tests is allowed. Write migrations as new SQL files in supabase/migrations/ only; I review and apply them. Never edit a migration that has been applied.
+After production launch, any breaking change to a DB command signature (dropping, renaming or reordering arguments, or changing a return shape) must keep a compatibility wrapper with the old signature for one release, so the previous app deploy keeps working until the new one is live. Before launch (as with M7's drop/recreate of create_booking/confirm_booking) a drop and replace is fine.
 Every new table has RLS enabled with explicit policies in the same migration.
 Secrets never go in code. List every new env variable (no values) in .env.example.
 Work only on the current milestone. No drive-by refactors.
