@@ -267,7 +267,9 @@ Punjabi names stay NULL until P1.
 
 ---
 
-## M7 — Reschedule and travel buffers (T-12, T-14 rest)
+## M7 — Reschedule and travel buffers (T-12, T-14 rest) (built, not founder-verified)
+
+*Status: built overnight on branch `m7-reschedule-buffers`; proposal `docs/proposals/m7.md` (every decision AUTO-DECIDED, awaiting founder review). Migration (replaces the M6 `create_booking`/`confirm_booking` signatures: apply it together with the M7 deploy), `m7_checks.sql`, SQL tests, buffer-only race, API, OpenAPI, pages and tests done; real output in the PR.*
 
 **Delivers:** `reschedule_booking` (with `reason_code`), buffer-only overlap → `BUFFER_CONFLICT` and the acknowledgement dialog ("You have 15 minutes to travel… Continue?"), `ack_buffer_overlap` recorded; reschedule UI.
 **Tables:** none new. **Env vars:** none.

@@ -219,12 +219,29 @@
     "minutes": "{count} मिनट",
     "bookingsOfCustomer": "इस यजमान की बुकिंग",
     "noOfferings": "पहले सेटिंग में कोई पूजा जोड़ें।",
-    "invalidTime": "समय सही नहीं लगता।"
+    "invalidTime": "समय सही नहीं लगता।",
+    "bufferQuestion": "पंडित जी के पास आने-जाने के लिए केवल {minutes} मिनट हैं। फिर भी जारी रखें?",
+    "bufferOverlap": "आने-जाने का समय दूसरी पूजा से टकरा रहा है। फिर भी जारी रखें?",
+    "bufferContinue": "हाँ, जारी रखें",
+    "bufferBack": "नहीं, वापस जाएँ",
+    "bufferAcknowledged": "आने-जाने का कम समय स्वीकार किया गया",
+    "reschedule": "समय बदलें",
+    "rescheduleTitle": "बुकिंग का समय बदलें",
+    "reasonCode": "समय बदलने का कारण",
+    "rescheduleHint": "नया समय मिलने पर ही पुराना समय छूटेगा।"
   },
   "bookingStatus": {
     "DRAFT": "ड्राफ़्ट",
     "CONFIRMED": "पक्की",
     "COMPLETED": "पूरी हुई",
     "CANCELLED": "रद्द"
+  },
+  "rescheduleReason": {
+    "CUSTOMER_REQUEST": "यजमान ने कहा",
+    "PRIEST_REQUEST": "पंडित जी ने कहा",
+    "MUHURAT_FIXED": "मुहूर्त तय हुआ",
+    "PRIEST_CHANGED": "पंडित जी बदले",
+    "CORRECTION": "गलती सुधारी",
+    "OTHER": "कोई और कारण"
   }
 }

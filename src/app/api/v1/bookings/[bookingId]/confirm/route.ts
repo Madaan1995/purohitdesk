@@ -20,7 +20,7 @@ export const POST = route(async (req: Request, { params }: Params) => {
   const result = await withTenantTx(ctx, (tx) =>
     command<BookingCommandResult>(
       tx`SELECT app.confirm_booking(${bookingId}::uuid, ${version}::int, ${body.priest_ids ?? null}::uuid[],
-                                    ${ctx.idempotencyKey}, ${hash}) AS result`,
+                                    ${body.ack_buffer_overlap ?? false}::boolean, ${ctx.idempotencyKey}, ${hash}) AS result`,
     ),
   );
   return json(result, 200, etag(result.booking.version));

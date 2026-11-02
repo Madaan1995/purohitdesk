@@ -39,13 +39,13 @@ SET ROLE app_runtime;
 SELECT test.ctx('a7000000-0000-0000-0000-000000000001', 'a7000000-0000-0000-0000-0000000000aa');
 SELECT app.create_booking('{"customer_id": "a7000000-0000-0000-0000-0000000000c1", "offering_id":
   "a7000000-0000-0000-0000-0000000000d1", "starts_at": "2027-01-10T04:30:00Z", "ends_at": "2027-01-10T06:30:00Z",
-  "buffer_before_min": 0, "buffer_after_min": 0}', false, 'g-key-0001', repeat('a', 64)) -> 'booking' ->> 'id' AS draft \gset
+  "buffer_before_min": 0, "buffer_after_min": 0}', false, false, 'g-key-0001', repeat('a', 64)) -> 'booking' ->> 'id' AS draft \gset
 SELECT app.create_booking('{"customer_id": "a7000000-0000-0000-0000-0000000000c1", "offering_id":
   "a7000000-0000-0000-0000-0000000000d1", "starts_at": "2027-01-11T04:30:00Z", "ends_at": "2027-01-11T06:30:00Z",
-  "priest_ids": ["a7000000-0000-0000-0000-0000000000e1"]}', true, 'g-key-0002', repeat('a', 64)) -> 'booking' ->> 'id' AS conf \gset
+  "priest_ids": ["a7000000-0000-0000-0000-0000000000e1"]}', true, false, 'g-key-0002', repeat('a', 64)) -> 'booking' ->> 'id' AS conf \gset
 SELECT app.create_booking('{"customer_id": "a7000000-0000-0000-0000-0000000000c1", "offering_id":
   "a7000000-0000-0000-0000-0000000000d1", "starts_at": "2026-01-11T04:30:00Z", "ends_at": "2026-01-11T06:30:00Z",
-  "priest_ids": ["a7000000-0000-0000-0000-0000000000e1"]}', true, 'g-key-0003', repeat('a', 64)) -> 'booking' AS done \gset
+  "priest_ids": ["a7000000-0000-0000-0000-0000000000e1"]}', true, false, 'g-key-0003', repeat('a', 64)) -> 'booking' AS done \gset
 SELECT (:'done'::jsonb ->> 'id') AS done \gset
 SELECT app.complete_booking(:'done', 2, 'g-key-0004', repeat('a', 64)) IS NOT NULL AS ok \gset
 SELECT test.lives($$SELECT test.at_commit('SELECT 1')$$, 'bookings made by the commands satisfy the invariants');

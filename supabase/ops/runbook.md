@@ -29,7 +29,9 @@ there sees every practice's rows, whatever the policies say.
    only the ones not applied yet: M1 `20261028200000_m1_foundation.sql`, `20261028200100_m1_identity_tenancy.sql`;
    M2 `20261028210000_m2_auth_onboarding.sql`; M4 `20261028220000_m4_customers.sql`;
    M5 `20261028230000_m5_catalog_settings.sql`; M6 `20261101100000_m6_bookings.sql` (it enables the `btree_gist`
-   extension in schema `extensions`; if that is refused, send me the error). If any statement fails (most likely a `CREATE ROLE`, `GRANT <role> TO
+   extension in schema `extensions`; if that is refused, send me the error); M7
+   `20261101200000_m7_reschedule_buffers.sql` (deploy the M7 code at the same time: it replaces the booking commands'
+   signatures). If any statement fails (most likely a `CREATE ROLE`, `GRANT <role> TO
    CURRENT_USER`, `ALTER FUNCTION … OWNER TO` or `REVOKE <role> FROM CURRENT_USER` — spec risk U1), stop and send me
    the exact error. Do not work around it with BYPASSRLS or the service-role key.
    - Each migration makes `postgres` a member of the roles it hands functions to and removes that membership again

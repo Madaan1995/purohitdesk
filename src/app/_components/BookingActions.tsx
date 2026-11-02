@@ -13,11 +13,12 @@ interface Props {
   bookingId: string;
   version: number;
   status: BookingStatus;
+  span: { starts_at: string; ends_at: string } | null;
   can: { confirm: boolean; cancel: boolean; complete: boolean };
 }
 
 /** Confirm, cancel (with a reason once confirmed) and complete. Destructive actions ask first. */
-export function BookingActions({ tenantId, timeZone, bookingId, version, status, can }: Props) {
+export function BookingActions({ tenantId, timeZone, bookingId, version, status, span, can }: Props) {
   const t = useTranslations('bookings');
   const router = useRouter();
   const key = useRef(crypto.randomUUID());
@@ -51,7 +52,13 @@ export function BookingActions({ tenantId, timeZone, bookingId, version, status,
 
   return (
     <section className="flex flex-col gap-3">
-      <BookingError failure={failure} timeZone={timeZone} />
+      <BookingError
+        failure={failure}
+        timeZone={timeZone}
+        span={span}
+        onAcknowledge={() => void run('confirm', { ack_buffer_overlap: true })}
+        onDismiss={() => setFailure(null)}
+      />
       {status === 'DRAFT' && can.confirm && (
         <button type="button" disabled={busy} onClick={() => run('confirm', {})} className={`${button} bg-brand text-white`}>
           {busy ? t('saving') : t('confirm')}

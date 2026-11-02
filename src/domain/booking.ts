@@ -100,3 +100,36 @@ export interface BookingConflict {
   same_org: boolean;
   booking_id?: string;
 }
+
+/** reschedule_booking reason codes (the SQL list in the M7 migration; no free text in history, spec defect 10). */
+export const RESCHEDULE_REASON_CODES = [
+  'CUSTOMER_REQUEST',
+  'PRIEST_REQUEST',
+  'MUHURAT_FIXED',
+  'PRIEST_CHANGED',
+  'CORRECTION',
+  'OTHER',
+] as const;
+export type RescheduleReasonCode = (typeof RESCHEDULE_REASON_CODES)[number];
+
+/**
+ * The shortest travel time, in whole minutes, between a ceremony [startsAt, endsAt) and the busy spans of a
+ * BUFFER_CONFLICT ("only 15 minutes to travel"). 0 when a span touches the ceremony; null without spans.
+ */
+export function travelGapMinutes(
+  conflicts: readonly { starts_at: string; ends_at: string }[],
+  startsAt: string,
+  endsAt: string,
+): number | null {
+  const start = Date.parse(startsAt);
+  const end = Date.parse(endsAt);
+  let best: number | null = null;
+  for (const c of conflicts) {
+    const cs = Date.parse(c.starts_at);
+    const ce = Date.parse(c.ends_at);
+    const gap = ce <= start ? start - ce : cs >= end ? cs - end : 0;
+    const minutes = Math.floor(gap / 60_000);
+    if (best === null || minutes < best) best = minutes;
+  }
+  return best;
+}

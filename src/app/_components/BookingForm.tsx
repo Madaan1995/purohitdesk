@@ -48,6 +48,7 @@ export function BookingForm({ tenantId, timeZone, today, offerings, priests, can
   const locale = useLocale();
   const router = useRouter();
   const key = useRef(crypto.randomUUID());
+  const lastConfirm = useRef(false);
   const status = booking?.status ?? 'DRAFT';
   const scheduleLocked = status !== 'DRAFT';
   const detailsLocked = status === 'COMPLETED' || status === 'CANCELLED';
@@ -107,9 +108,21 @@ export function BookingForm({ tenantId, timeZone, today, offerings, priests, can
     }
   }
 
+  function span(): { starts_at: string; ends_at: string } | null {
+    if (!time || timeInvalid) return null;
+    const start = zonedDateTimeToUtc(date, time, timeZone);
+    return { starts_at: start.toISOString(), ends_at: addMinutes(start, minutes).toISOString() };
+  }
+
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const confirmNow = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'confirm';
+    lastConfirm.current = (e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'confirm';
+    await send(false);
+  }
+
+  /** ack: resend after the priest accepted a travel-time overlap (BUFFER_CONFLICT). */
+  async function send(ack: boolean) {
+    const confirmNow = lastConfirm.current;
     if (busy || dakshinaInvalid || timeInvalid) return;
     if (!customer) {
       setLocalError(t('noCustomer'));
@@ -140,7 +153,7 @@ export function BookingForm({ tenantId, timeZone, today, offerings, priests, can
       ? { notes: details.notes }
       : scheduleLocked
         ? details
-        : { ...details, ...schedule, ...(booking ? {} : { confirm: confirmNow }) };
+        : { ...details, ...schedule, ...(booking ? {} : { confirm: confirmNow, ...(ack ? { ack_buffer_overlap: true } : {}) }) };
 
     const result = await apiWrite<{ booking: Booking }>(booking ? `/bookings/${booking.id}` : '/bookings', {
       method: booking ? 'PATCH' : 'POST',
@@ -316,7 +329,13 @@ export function BookingForm({ tenantId, timeZone, today, offerings, priests, can
           {localError}
         </p>
       )}
-      <BookingError failure={failure} timeZone={timeZone} />
+      <BookingError
+        failure={failure}
+        timeZone={timeZone}
+        span={span()}
+        onAcknowledge={() => void send(true)}
+        onDismiss={() => setFailure(null)}
+      />
       {saved && (
         <p role="status" className="rounded-lg bg-green-50 px-3 py-2 text-base text-green-800">
           {t('saved')}

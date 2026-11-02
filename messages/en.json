@@ -219,12 +219,29 @@
     "minutes": "{count} min",
     "bookingsOfCustomer": "Bookings of this customer",
     "noOfferings": "Add a ceremony in Settings first.",
-    "invalidTime": "This time does not look right."
+    "invalidTime": "This time does not look right.",
+    "bufferQuestion": "The priest has only {minutes} minutes to travel. Continue anyway?",
+    "bufferOverlap": "The travel time overlaps another ceremony. Continue anyway?",
+    "bufferContinue": "Yes, continue",
+    "bufferBack": "No, go back",
+    "bufferAcknowledged": "Short travel time accepted",
+    "reschedule": "Change time",
+    "rescheduleTitle": "Change the booking's time",
+    "reasonCode": "Reason for the change",
+    "rescheduleHint": "The old time is released only when the new time is free."
   },
   "bookingStatus": {
     "DRAFT": "Draft",
     "CONFIRMED": "Confirmed",
     "COMPLETED": "Completed",
     "CANCELLED": "Cancelled"
+  },
+  "rescheduleReason": {
+    "CUSTOMER_REQUEST": "Customer asked",
+    "PRIEST_REQUEST": "Priest asked",
+    "MUHURAT_FIXED": "Muhurat fixed",
+    "PRIEST_CHANGED": "Priest changed",
+    "CORRECTION": "Correction",
+    "OTHER": "Other reason"
   }
 }

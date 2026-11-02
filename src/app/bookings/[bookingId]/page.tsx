@@ -82,6 +82,9 @@ export default async function BookingPage({ params }: { params: Promise<{ bookin
               {t('buffers', { before: b.buffer_before_min, after: b.buffer_after_min })}
             </p>
           )}
+          {b.buffer_overlap_ack && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-base text-amber-900">{t('bufferAcknowledged')}</p>
+          )}
           {b.title && <p className="text-base">{b.title}</p>}
           {b.notes && <p className="whitespace-pre-line text-base text-neutral-700">{b.notes}</p>}
           {b.cancel_reason && <p className="text-base text-neutral-700">{t('cancelledBecause', { reason: b.cancel_reason })}</p>}
@@ -94,12 +97,21 @@ export default async function BookingPage({ params }: { params: Promise<{ bookin
             {t('edit')}
           </Link>
         )}
+        {b.status === 'CONFIRMED' && may('CONFIRM') && (
+          <Link
+            href={`/bookings/${b.id}/reschedule`}
+            className="flex min-h-11 items-center justify-center rounded-lg border border-brand px-4 text-lg text-brand"
+          >
+            {t('reschedule')}
+          </Link>
+        )}
         <BookingActions
           tenantId={current.organization.id}
           timeZone={b.timezone}
           bookingId={b.id}
           version={b.version}
           status={b.status}
+          span={b.starts_at && b.ends_at ? { starts_at: b.starts_at, ends_at: b.ends_at } : null}
           can={{ confirm: may('CONFIRM'), cancel: may('CANCEL'), complete: may('COMPLETE') }}
         />
       </main>

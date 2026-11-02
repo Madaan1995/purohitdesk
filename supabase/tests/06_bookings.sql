@@ -50,16 +50,16 @@ CREATE FUNCTION test.bk(p jsonb, p_confirm boolean DEFAULT false) RETURNS jsonb 
   SELECT app.create_booking(
     jsonb_build_object('customer_id', 'a6000000-0000-0000-0000-0000000000c1',
                        'offering_id', 'a6000000-0000-0000-0000-0000000000d1') || p,
-    p_confirm, 'k-' || gen_random_uuid(), repeat('a', 64)) -> 'booking' $$;
+    p_confirm, false, 'k-' || gen_random_uuid(), repeat('a', 64)) -> 'booking' $$;
 CREATE FUNCTION test.bk_b(p jsonb, p_confirm boolean DEFAULT false) RETURNS jsonb LANGUAGE sql AS $$
   SELECT app.create_booking(
     jsonb_build_object('customer_id', 'b6000000-0000-0000-0000-0000000000c1',
                        'offering_id', 'b6000000-0000-0000-0000-0000000000d1') || p,
-    p_confirm, 'k-' || gen_random_uuid(), repeat('a', 64)) -> 'booking' $$;
+    p_confirm, false, 'k-' || gen_random_uuid(), repeat('a', 64)) -> 'booking' $$;
 CREATE FUNCTION test.ver(p_id uuid) RETURNS integer LANGUAGE sql AS $$
   SELECT version FROM app.bookings WHERE id = p_id $$;
 CREATE FUNCTION test.confirm(p_id uuid, p_priests uuid[] DEFAULT NULL) RETURNS jsonb LANGUAGE sql AS $$
-  SELECT app.confirm_booking(p_id, test.ver(p_id), p_priests, 'k-' || gen_random_uuid(), repeat('a', 64)) -> 'booking' $$;
+  SELECT app.confirm_booking(p_id, test.ver(p_id), p_priests, false, 'k-' || gen_random_uuid(), repeat('a', 64)) -> 'booking' $$;
 CREATE FUNCTION test.edit(p_id uuid, p jsonb) RETURNS jsonb LANGUAGE sql AS $$
   SELECT app.update_booking(p_id, test.ver(p_id), p, 'k-' || gen_random_uuid(), repeat('a', 64)) -> 'booking' $$;
 CREATE FUNCTION test.cancel(p_id uuid, p_reason text DEFAULT NULL) RETURNS jsonb LANGUAGE sql AS $$
@@ -147,10 +147,10 @@ EXCEPTION WHEN exclusion_violation THEN
     'a conflict in the same practice names its booking');
 END $$;
 SELECT test.lives($$SELECT test.bk('{"starts_at": "2027-01-12T04:30:00Z", "ends_at": "2027-01-12T06:30:00Z",
-  "priest_ids": ["a6000000-0000-0000-0000-0000000000e1"]}', true),
-  test.bk('{"starts_at": "2027-01-12T06:30:00Z", "ends_at": "2027-01-12T07:30:00Z",
+  "buffer_after_min": 0, "priest_ids": ["a6000000-0000-0000-0000-0000000000e1"]}', true),
+  test.bk('{"starts_at": "2027-01-12T06:30:00Z", "ends_at": "2027-01-12T07:30:00Z", "buffer_before_min": 0,
   "priest_ids": ["a6000000-0000-0000-0000-0000000000e1"]}', true)$$,
-  'back-to-back ceremonies do not conflict (12:00-13:00 after 10:00-12:00; spans are half-open)');
+  'back-to-back ceremonies without travel time do not conflict (12:00-13:00 after 10:00-12:00; spans are half-open)');
 
 -- Cancel.
 SELECT test.throws(format('SELECT test.cancel(%L)', :'d1id'), 'PD422', 'cancelling a CONFIRMED booking needs a reason',
@@ -263,7 +263,7 @@ SELECT test.throws(format('SELECT test.confirm(%L)', :'team'), '23P01', 'one bus
   'BOOKING_CONFLICT');
 SELECT test.is((SELECT count(*) FROM app.calendar_reservations WHERE booking_id = :'team'), 0::bigint,
   'no partial reservation for the free priest');
-SELECT test.edit(:'team', '{"starts_at": "2027-02-02T07:00:00Z", "ends_at": "2027-02-02T08:00:00Z"}') AS teamv \gset
+SELECT test.edit(:'team', '{"starts_at": "2027-02-02T08:00:00Z", "ends_at": "2027-02-02T09:00:00Z"}') AS teamv \gset
 SELECT test.is((SELECT string_agg(role, ',' ORDER BY position) FROM app.booking_assignments WHERE booking_id = :'team'),
   'LEAD,ASSISTANT', 'one LEAD + one ASSISTANT');
 SELECT test.confirm(:'team') AS teamc \gset
@@ -339,7 +339,7 @@ SELECT test.throws(format($$INSERT INTO app.calendar_reservations (org_id, kind,
   tstzrange(now(), now() + interval '1 hour'), tstzrange(now(), now() + interval '1 hour'), %L)$$,
   'a6000000-0000-0000-0000-0000000000aa', :'la', 'a6000000-0000-0000-0000-000000000001'), '42501',
   'runtime cannot INSERT reservations directly');
-SELECT test.throws(format('SELECT app._reserve_booking(%L)', :'sd'), '42501',
+SELECT test.throws(format('SELECT app._reserve_booking(%L, false)', :'sd'), '42501',
   'runtime cannot call internal helpers (_reserve_booking)');
 SELECT test.throws($$SELECT * FROM app._priest_conflicts('a6000000-0000-0000-0000-0000000000f1',
   tstzrange(now(), now() + interval '1 hour'), tstzrange(now(), now() + interval '1 hour'), NULL)$$, '42501',
@@ -350,22 +350,22 @@ SELECT test.throws($$INSERT INTO app.booking_events (org_id, booking_id, event) 
 -- ---------------------------------------------------------------- 09 idempotency
 SELECT app.create_booking(jsonb_build_object('customer_id', 'a6000000-0000-0000-0000-0000000000c1',
   'offering_id', 'a6000000-0000-0000-0000-0000000000d1', 'local_date', '2027-04-01', 'title', 'dup race'),
-  false, 'idem-key-0001', repeat('b', 64)) AS i1 \gset
+  false, false, 'idem-key-0001', repeat('b', 64)) AS i1 \gset
 SELECT app.create_booking(jsonb_build_object('customer_id', 'a6000000-0000-0000-0000-0000000000c1',
   'offering_id', 'a6000000-0000-0000-0000-0000000000d1', 'local_date', '2027-04-01', 'title', 'dup race'),
-  false, 'idem-key-0001', repeat('b', 64)) AS i2 \gset
+  false, false, 'idem-key-0001', repeat('b', 64)) AS i2 \gset
 SELECT test.ok((:'i2'::jsonb -> 'booking' ->> 'id') = (:'i1'::jsonb -> 'booking' ->> 'id')
   AND (:'i2'::jsonb ->> 'idempotent_replay')::boolean AND NOT (:'i1'::jsonb ->> 'idempotent_replay')::boolean,
   'replay returns the original booking');
 SELECT test.is((SELECT count(*) FROM app.bookings WHERE title = 'dup race'), 1::bigint, 'only one booking exists');
-SELECT test.throws($$SELECT app.create_booking('{"local_date": "2027-04-02"}', false, 'idem-key-0001', repeat('c', 64))$$,
+SELECT test.throws($$SELECT app.create_booking('{"local_date": "2027-04-02"}', false, false, 'idem-key-0001', repeat('c', 64))$$,
   'PD412', 'same key, different body', 'IDEMPOTENCY_REUSE');
 SELECT test.throws(format($$SELECT app.cancel_booking(%L, 1, NULL, 'idem-key-0001', repeat('b', 64))$$,
   :'i1'::jsonb -> 'booking' ->> 'id'), 'PD412', 'same key, different command', 'IDEMPOTENCY_REUSE');
-SELECT test.throws($$SELECT app.create_booking('{"local_date": "2027-02-30"}', false, 'idem-key-0002', repeat('d', 64))$$,
+SELECT test.throws($$SELECT app.create_booking('{"local_date": "2027-02-30"}', false, false, 'idem-key-0002', repeat('d', 64))$$,
   'PD422', 'failing command', 'VALIDATION_FAILED');
 SELECT test.lives($$SELECT app.create_booking(jsonb_build_object('customer_id', 'a6000000-0000-0000-0000-0000000000c1',
-  'offering_id', 'a6000000-0000-0000-0000-0000000000d1', 'local_date', '2027-04-03'), false, 'idem-key-0002',
+  'offering_id', 'a6000000-0000-0000-0000-0000000000d1', 'local_date', '2027-04-03'), false, false, 'idem-key-0002',
   repeat('e', 64))$$, 'a failed command frees its key for a retry');
 
 -- ---------------------------------------------------------------- history and invariants
