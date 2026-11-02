@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: PurohitDesk API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     Written per milestone (docs/plan.md). JSON, UTF-8, snake_case fields matching SQL columns.
     Every write calls exactly one PostgreSQL command (`x-db-function`); `x-permission` names the permission the
@@ -451,6 +451,166 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+  /bookings:
+    get:
+      operationId: listBookings
+      summary: The practice's bookings, by local date then booking number (keyset pagination)
+      x-permission: BOOKING_READ
+      x-db-function: none (SELECT under RLS)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/BookingStatus' } }
+        - { name: customer_id, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, description: 'local date, inclusive', schema: { type: string, format: date } }
+        - { name: to, in: query, description: 'local date, inclusive; at most 366 days after from', schema: { type: string, format: date } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 1024 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, next_cursor]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/BookingSummary' } }
+                  next_cursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createBooking
+      summary: Create a DRAFT (a date alone is enough), or create and confirm at once with confirm=true
+      x-permission: BOOKING_CREATE (+ BOOKING_CONFIRM, or BOOKING_CONFIRM_OWN as the LEAD priest, when confirm=true)
+      x-db-function: app.create_booking
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBookingRequest' }
+      responses:
+        '201': { description: Created, headers: { ETag: { schema: { type: string } } }, content: { application/json: { schema: { $ref: '#/components/schemas/BookingCommandResult' } } } }
+        '200': { description: Replay, headers: { ETag: { schema: { type: string } } }, content: { application/json: { schema: { $ref: '#/components/schemas/BookingCommandResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: 'BOOKING_CONFLICT (details.conflicts, see BookingConflict) or IDEMPOTENCY_REUSE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+  /bookings/{bookingId}:
+    parameters:
+      - { name: bookingId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getBooking
+      summary: The booking read model
+      x-permission: BOOKING_READ
+      x-db-function: app.get_booking
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200': { description: OK, headers: { ETag: { schema: { type: string } } }, content: { application/json: { schema: { $ref: '#/components/schemas/Booking' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      operationId: updateBooking
+      summary: >-
+        JSON patch (null clears, absent keeps). DRAFT: every field. CONFIRMED: schedule fields (timezone, local_date,
+        starts_at, ends_at, is_time_tentative, buffers, priest_ids) → 422 reason USE_RESCHEDULE. COMPLETED/CANCELLED:
+        only notes, else 409 INVALID_TRANSITION.
+      x-permission: BOOKING_EDIT; changing priest_ids as PRIEST (BOOKING_CONFIRM_OWN only) requires being LEAD before and after
+      x-db-function: app.update_booking
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateBookingRequest' }
+      responses:
+        '200': { description: OK, headers: { ETag: { schema: { type: string } } }, content: { application/json: { schema: { $ref: '#/components/schemas/BookingCommandResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /bookings/{bookingId}/confirm:
+    parameters:
+      - { name: bookingId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: confirmBooking
+      summary: DRAFT → CONFIRMED; needs a time (422 TIME_REQUIRED) and a LEAD (422 LEAD_REQUIRED); reserves every assigned priest or none
+      x-permission: BOOKING_CONFIRM, or BOOKING_CONFIRM_OWN when the actor is the LEAD priest before and after any priest_ids change
+      x-db-function: app.confirm_booking
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfirmBookingRequest' }
+      responses:
+        '200': { description: OK, headers: { ETag: { schema: { type: string } } }, content: { application/json: { schema: { $ref: '#/components/schemas/BookingCommandResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: 'BOOKING_CONFLICT (details.conflicts), INVALID_TRANSITION, VERSION_CONFLICT or IDEMPOTENCY_REUSE', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+  /bookings/{bookingId}/cancel:
+    parameters:
+      - { name: bookingId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: cancelBooking
+      summary: DRAFT or CONFIRMED → CANCELLED; a CONFIRMED booking needs a reason (3–500 characters); releases the slots
+      x-permission: BOOKING_CANCEL, or BOOKING_CANCEL_OWN when the actor is the LEAD priest
+      x-db-function: app.cancel_booking
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancelBookingRequest' }
+      responses:
+        '200': { description: OK, headers: { ETag: { schema: { type: string } } }, content: { application/json: { schema: { $ref: '#/components/schemas/BookingCommandResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /bookings/{bookingId}/complete:
+    parameters:
+      - { name: bookingId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: completeBooking
+      summary: CONFIRMED → COMPLETED once the ceremony has started (else 422 NOT_STARTED); the busy time is kept
+      x-permission: BOOKING_COMPLETE, or BOOKING_COMPLETE_OWN when the actor is the LEAD priest
+      x-db-function: app.complete_booking
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '200': { description: OK, headers: { ETag: { schema: { type: string } } }, content: { application/json: { schema: { $ref: '#/components/schemas/BookingCommandResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     bearer:
@@ -727,6 +887,149 @@ components:
           required: [idempotent_replay]
           properties:
             idempotent_replay: { type: boolean }
+    BookingStatus:
+      type: string
+      enum: [DRAFT, CONFIRMED, COMPLETED, CANCELLED]
+    BookingPriest:
+      type: object
+      additionalProperties: false
+      required: [organization_priest_id, priest_profile_id, display_name, role]
+      properties:
+        organization_priest_id: { type: string, format: uuid }
+        priest_profile_id: { type: string, format: uuid }
+        display_name: { type: string }
+        role: { type: string, enum: [LEAD, ASSISTANT] }
+    Booking:
+      type: object
+      additionalProperties: false
+      required: [id, booking_number, status, customer, offering, title, location, notes, agreed_dakshina_paise, timezone,
+                 local_date, starts_at, ends_at, is_time_tentative, buffer_before_min, buffer_after_min,
+                 buffer_overlap_ack, source, created_via, cancel_reason, priests, confirmed_at, completed_at,
+                 cancelled_at, created_at, updated_at, version]
+      properties:
+        id: { type: string, format: uuid }
+        booking_number: { type: string, pattern: '^PD-[0-9]{2}-[0-9]{4,}$' }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        customer:
+          type: object
+          additionalProperties: false
+          required: [id, display_name]
+          properties: { id: { type: string, format: uuid }, display_name: { type: string } }
+        offering:
+          type: object
+          additionalProperties: false
+          required: [id, name_hi, name_en, duration_min]
+          properties:
+            id: { type: string, format: uuid }
+            name_hi: { type: string }
+            name_en: { type: string }
+            duration_min: { type: integer }
+        title: { type: [string, 'null'], maxLength: 120 }
+        location: { type: [string, 'null'], maxLength: 500 }
+        notes: { type: [string, 'null'], maxLength: 2000 }
+        agreed_dakshina_paise: { type: [integer, 'null'], minimum: 0, maximum: 100000000000 }
+        timezone: { type: string, description: IANA time zone }
+        local_date: { type: string, format: date, description: 'the start''s date in timezone; a date-only draft has no times' }
+        starts_at: { type: [string, 'null'], format: date-time }
+        ends_at: { type: [string, 'null'], format: date-time }
+        is_time_tentative: { type: boolean, description: 'the whole window is reserved; the exact muhurat comes later' }
+        buffer_before_min: { type: [integer, 'null'], minimum: 0, maximum: 360 }
+        buffer_after_min: { type: [integer, 'null'], minimum: 0, maximum: 360 }
+        buffer_overlap_ack: { type: boolean }
+        source: { type: string, enum: [PRIEST_DIRECT] }
+        created_via: { type: string, enum: [MANUAL] }
+        cancel_reason: { type: [string, 'null'], maxLength: 500 }
+        priests: { type: array, maxItems: 11, items: { $ref: '#/components/schemas/BookingPriest' } }
+        confirmed_at: { type: [string, 'null'], format: date-time }
+        completed_at: { type: [string, 'null'], format: date-time }
+        cancelled_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        version: { type: integer, minimum: 1 }
+    BookingSummary:
+      type: object
+      additionalProperties: false
+      required: [id, booking_number, status, customer, offering, title, local_date, starts_at, ends_at, timezone,
+                 is_time_tentative, version]
+      properties:
+        id: { type: string, format: uuid }
+        booking_number: { type: string }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        customer:
+          type: object
+          additionalProperties: false
+          required: [id, display_name]
+          properties: { id: { type: string, format: uuid }, display_name: { type: string } }
+        offering:
+          type: object
+          additionalProperties: false
+          required: [id, name_hi, name_en]
+          properties: { id: { type: string, format: uuid }, name_hi: { type: string }, name_en: { type: string } }
+        title: { type: [string, 'null'] }
+        local_date: { type: string, format: date }
+        starts_at: { type: [string, 'null'], format: date-time }
+        ends_at: { type: [string, 'null'], format: date-time }
+        timezone: { type: string }
+        is_time_tentative: { type: boolean }
+        version: { type: integer, minimum: 1 }
+    BookingCommandResult:
+      type: object
+      additionalProperties: false
+      required: [booking, idempotent_replay]
+      properties:
+        booking: { $ref: '#/components/schemas/Booking' }
+        idempotent_replay: { type: boolean }
+    BookingConflict:
+      type: object
+      additionalProperties: false
+      description: One busy span in error.details.conflicts of BOOKING_CONFLICT. booking_id only for the same practice.
+      required: [organization_priest_id, starts_at, ends_at, same_org]
+      properties:
+        organization_priest_id: { type: string, format: uuid, description: 'the priest of THIS booking who is busy' }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        same_org: { type: boolean }
+        booking_id: { type: string, format: uuid }
+    BookingFields:
+      type: object
+      properties:
+        customer_id: { type: string, format: uuid }
+        offering_id: { type: string, format: uuid }
+        title: { type: [string, 'null'], maxLength: 120 }
+        location: { type: [string, 'null'], maxLength: 500 }
+        notes: { type: [string, 'null'], maxLength: 2000 }
+        agreed_dakshina_paise: { type: [integer, 'null'], minimum: 0, maximum: 100000000000 }
+        timezone: { type: string, description: 'IANA name; default the practice''s' }
+        local_date: { type: [string, 'null'], format: date, description: 'required without times; must match starts_at' }
+        starts_at: { type: [string, 'null'], format: date-time, description: 'RFC 3339 with an offset; with ends_at, at most 7 days' }
+        ends_at: { type: [string, 'null'], format: date-time }
+        is_time_tentative: { type: boolean }
+        buffer_before_min: { type: [integer, 'null'], minimum: 0, maximum: 360, description: 'default: the LEAD''s' }
+        buffer_after_min: { type: [integer, 'null'], minimum: 0, maximum: 360 }
+        priest_ids: { type: array, maxItems: 11, uniqueItems: true, items: { type: string, format: uuid }, description: 'organization_priest ids; first = LEAD' }
+    CreateBookingRequest:
+      allOf:
+        - $ref: '#/components/schemas/BookingFields'
+        - type: object
+          required: [customer_id, offering_id]
+          properties:
+            confirm: { type: boolean, default: false }
+      unevaluatedProperties: false
+    UpdateBookingRequest:
+      allOf:
+        - $ref: '#/components/schemas/BookingFields'
+      minProperties: 1
+      unevaluatedProperties: false
+    ConfirmBookingRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        priest_ids: { type: array, minItems: 1, maxItems: 11, uniqueItems: true, items: { type: string, format: uuid } }
+    CancelBookingRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason: { type: [string, 'null'], maxLength: 500, description: 'required (3+ characters) for a CONFIRMED booking' }
     ErrorEnvelope:
       type: object
       additionalProperties: false

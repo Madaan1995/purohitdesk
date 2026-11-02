@@ -246,7 +246,9 @@ Punjabi names stay NULL until P1.
 
 ---
 
-## M6 — Bookings: draft → confirm → cancel / complete (T-12, T-14 part)
+## M6 — Bookings: draft → confirm → cancel / complete (T-12, T-14 part) (built, not founder-verified)
+
+*Status: built overnight on branch `m6-bookings`; proposal `docs/proposals/m6.md` (every decision AUTO-DECIDED, awaiting founder review). Migration, `m6_checks.sql`, SQL tests, two-session concurrency harness, API, OpenAPI, pages and tests done; real output in the PR. Travel-buffer conflicts are not checked until M7.*
 
 **Delivers:** `create_booking`, `update_booking`, `confirm_booking`, `cancel_booking`, `complete_booking`, `get_booking`, `_reserve_booking`, `_priest_conflicts` (owned by `app_freebusy`); state guard and deferred invariant triggers; exclusion constraint on the global priest identity; booking numbers `PD-YY-NNNN` (YY = creation year, never reset); endpoints `GET/POST /bookings`, `GET/PATCH /bookings/{id}`, `POST …/confirm|cancel|complete`; booking form (offering → default duration, date-only drafts, tentative toggle), booking detail, hard-conflict message in plain Hindi.
 **Proposals specific to M6:** reschedule `reason_code` values and the full `booking_events` event types with their data fields (spec §05 §11).

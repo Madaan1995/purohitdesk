@@ -6,7 +6,7 @@
 #   PGHOST (default localhost), PGPORT (default 5432), PGUSER (default postgres), PGPASSWORD.
 #
 # Steps: reset -> stub Supabase (auth.users, API roles) -> migrations as pd_migrator -> seed twice -> checks
-# scripts -> test files -> operator scripts.
+# scripts -> test files -> two-session concurrency races -> operator scripts.
 #
 # pd_migrator stands in for Supabase's postgres (staging, PostgreSQL 17.11, probed 29 Oct 2026: not SUPERUSER,
 # CREATEROLE, BYPASSRLS). It logs in as itself, like postgres in the SQL editor. Migrations are applied while it is
@@ -117,6 +117,16 @@ for f in supabase/tests/[0-9][0-9]_*.sql; do
     failures=$((failures + 1))
   fi
 done
+
+echo "== concurrency: two real sessions racing (as app_runtime, real COMMIT)"
+set +e
+race_out="$(bash supabase/tests/concurrency.sh)"
+race_status=$?
+set -e
+echo "$race_out"
+passed=$((passed + $(echo "$race_out" | grep -cE '^ok ' || true)))
+failed=$((failed + $(echo "$race_out" | grep -cE '^not ok ' || true)))
+if [ "$race_status" -ne 0 ] && ! echo "$race_out" | grep -qE '^not ok '; then failures=$((failures + 1)); fi
 
 echo "== operator scripts (supabase/ops) as pd_migrator"
 set +e

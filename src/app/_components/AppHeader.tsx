@@ -21,9 +21,12 @@ export async function AppHeader({ signedIn }: { signedIn: boolean }) {
         )}
       </div>
       {signedIn && (
-        <nav className="flex w-full gap-2">
+        <nav className="flex w-full flex-wrap gap-1">
           <Link href="/" className="flex min-h-11 items-center rounded-lg px-3 text-base text-brand underline">
             {t('nav.home')}
+          </Link>
+          <Link href="/bookings" className="flex min-h-11 items-center rounded-lg px-3 text-base text-brand underline">
+            {t('nav.bookings')}
           </Link>
           <Link href="/customers" className="flex min-h-11 items-center rounded-lg px-3 text-base text-brand underline">
             {t('nav.customers')}

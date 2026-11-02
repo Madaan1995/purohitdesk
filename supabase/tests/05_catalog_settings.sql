@@ -194,6 +194,10 @@ SELECT test.ctx(NULL, NULL);
 SELECT test.is(current_setting('pd_checks.m5_rls')::jsonb - '{no_context_seen,forged_seen,member_seen}'::text[],
   '{"no_context": "PASS", "forged": "PASS", "member": "PASS"}'::jsonb,
   'm5_checks.sql: the row-level checks pass on real templates and audit entries (as the application roles)');
+-- The checks script tests whichever ACTIVE member sorts first (org_members ids are random). With audit rows in only
+-- one practice, a leaking policy is invisible to that practice's OWNER, so give practice B a row too: then every
+-- member the script may pick sees a row it must not.
+INSERT INTO app.audit_log (org_id, action) VALUES ('b5000000-0000-0000-0000-0000000000bb', 'EXPORT');
 CREATE POLICY test_leak ON app.audit_log FOR SELECT TO app_runtime USING (true);
 \o /dev/null
 \i supabase/checks/m5_checks.sql

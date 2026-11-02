@@ -21,6 +21,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ custo
   if (!data) notFound();
   const { customer, duplicates } = data;
   const t = await getTranslations('customers');
+  const tb = await getTranslations('bookings');
   const canWrite = current.permissions.includes('CUSTOMER_WRITE');
 
   return (
@@ -47,6 +48,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ custo
             </ul>
             <p className="text-base">{t('duplicatesHint')}</p>
           </section>
+        )}
+        {current.permissions.includes('BOOKING_CREATE') && (
+          <Link
+            href={`/bookings/new?customer=${customer.id}`}
+            className="flex min-h-11 items-center justify-center rounded-lg bg-brand px-4 text-lg font-semibold text-white"
+          >
+            {tb('newForCustomer')}
+          </Link>
         )}
         {canWrite && (
           <section className="flex flex-col gap-3 border-t border-neutral-200 pt-4">
