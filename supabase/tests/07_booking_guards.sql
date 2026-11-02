@@ -170,17 +170,44 @@ SELECT test.throws(format($$UPDATE app.calendar_reservations SET span = span WHE
 SELECT test.throws($$UPDATE app.booking_events SET data = '{}'$$, '42501', 'app_domain has no UPDATE on history');
 RESET ROLE;
 
--- app_freebusy reads busy-time columns of ACTIVE reservations only while the actor is a member of the tenant.
+-- app_freebusy reads busy-time columns of ACTIVE reservations only while the actor is a member of the tenant, and
+-- only of priests (global profiles) linked to the current tenant. Practice A7's priest f1 holds 2 ACTIVE reservations.
 SET ROLE app_freebusy;
 SELECT test.ctx(NULL, NULL);
 SELECT test.is((SELECT count(id) FROM app.calendar_reservations), 0::bigint, 'app_freebusy sees nothing without context');
+SELECT test.ctx('a7000000-0000-0000-0000-000000000001', 'a7000000-0000-0000-0000-0000000000aa');
+SELECT test.is((SELECT count(id) FROM app.calendar_reservations), 2::bigint,
+  'app_freebusy sees the ACTIVE busy time of a priest linked to the current tenant');
+SELECT test.ctx('b7000000-0000-0000-0000-000000000001', 'b7000000-0000-0000-0000-0000000000bb');
+SELECT test.is((SELECT count(id) FROM app.calendar_reservations), 0::bigint,
+  'RLS: an unlinked priest''s reservations are invisible to app_freebusy (member of another practice)');
+SELECT test.is((SELECT count(id) FROM app.calendar_reservations
+                WHERE priest_profile_id = 'a7000000-0000-0000-0000-0000000000f1'), 0::bigint,
+  'RLS: even asking for the unlinked priest''s profile id by name returns nothing');
+SELECT test.ctx('a7000000-0000-0000-0000-000000000001', 'b7000000-0000-0000-0000-0000000000bb');
+SELECT test.is((SELECT count(id) FROM app.calendar_reservations), 0::bigint,
+  'RLS: a forged tenant (actor is no member) sees no busy time');
+RESET ROLE;
+-- Practice B7 links the same human (one profile, two practices): B7 now sees his busy time in A7 (spec §05 §4).
+INSERT INTO app.organization_priests (id, org_id, priest_profile_id, linked_via) VALUES
+  ('b7000000-0000-0000-0000-0000000000e3', 'b7000000-0000-0000-0000-0000000000bb',
+   'a7000000-0000-0000-0000-0000000000f1', 'INVITATION');
+SET ROLE app_freebusy;
 SELECT test.ctx('b7000000-0000-0000-0000-000000000001', 'b7000000-0000-0000-0000-0000000000bb');
 SELECT test.is((SELECT count(id) FROM app.calendar_reservations), 2::bigint,
-  'app_freebusy sees the ACTIVE busy time of every organization (for a member of one)');
+  'app_freebusy sees another practice''s ACTIVE busy time once the priest is linked to the current tenant');
 SELECT test.throws($$SELECT note FROM app.calendar_reservations$$, '42501', 'app_freebusy cannot read reservation notes');
+SELECT test.throws($$SELECT organization_priest_id FROM app.calendar_reservations$$, '42501',
+  'app_freebusy cannot read the other practice''s priest link id (spec §04 §7 column list)');
 SELECT test.throws($$SELECT count(*) FROM app.bookings$$, '42501', 'app_freebusy cannot read bookings');
 SELECT test.throws($$SELECT count(*) FROM app.customers$$, '42501', 'app_freebusy cannot read customers');
 RESET ROLE;
+DELETE FROM app.organization_priests WHERE id = 'b7000000-0000-0000-0000-0000000000e3';
+
+-- The harness has an `extensions` schema like Supabase, so the migration took its `WITH SCHEMA extensions` branch.
+SELECT test.is((SELECT n.nspname::text FROM pg_catalog.pg_extension e
+                JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = 'btree_gist'),
+  'extensions', 'btree_gist is installed in schema extensions (the Supabase branch of the M6 migration)');
 
 -- ---------------------------------------------------------------- supabase/checks/m6_checks.sql row-level checks
 -- The script tests whichever ACTIVE member sorts first (random ids): give practice B a booking too, so a leaking
