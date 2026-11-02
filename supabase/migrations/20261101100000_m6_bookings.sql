@@ -371,11 +371,16 @@ CREATE POLICY calendar_reservations_domain_update ON app.calendar_reservations
   USING (org_id = (SELECT app.current_tenant_id()) AND (SELECT app.current_member_role()) IS NOT NULL)
   WITH CHECK (org_id = (SELECT app.current_tenant_id()) AND (SELECT app.current_member_role()) IS NOT NULL);
 -- Busy time across organizations (spec §08 §3): ACTIVE rows of every organization, but only while the actor is an
--- ACTIVE member of the current tenant, and only the busy-time columns (grant below). app_freebusy is NOLOGIN and is
--- reachable only through _priest_conflicts (and priest_busy in M8), which check the priest link and strip ids.
+-- ACTIVE member of the current tenant, only for a human (priest profile) linked to the current tenant, and only the
+-- busy-time columns (grant below). An unlinked priest's reservations are invisible here, at the RLS layer, even if a
+-- function running as app_freebusy forgot its own link check. app_freebusy is NOLOGIN and is reachable only through
+-- _priest_conflicts (and priest_busy in M8), which also check the priest link and strip ids.
 CREATE POLICY calendar_reservations_freebusy_read ON app.calendar_reservations
   FOR SELECT TO app_freebusy
-  USING (status = 'ACTIVE' AND (SELECT app.current_member_role()) IS NOT NULL);
+  USING (status = 'ACTIVE' AND (SELECT app.current_member_role()) IS NOT NULL
+         AND EXISTS (SELECT 1 FROM app.organization_priests op
+                     WHERE op.org_id = (SELECT app.current_tenant_id())
+                       AND op.priest_profile_id = calendar_reservations.priest_profile_id));
 
 CREATE POLICY booking_events_read ON app.booking_events
   FOR SELECT TO app_runtime, app_domain
@@ -414,7 +419,8 @@ GRANT SELECT, INSERT ON app.calendar_reservations TO app_domain;
 GRANT UPDATE (status, released_at, released_by) ON app.calendar_reservations TO app_domain;
 GRANT INSERT ON app.booking_events TO app_domain;
 GRANT SELECT, UPDATE (next_booking_no) ON app.org_sequences TO app_domain;
-GRANT SELECT (id, org_id, organization_priest_id, priest_profile_id, booking_id, kind, status, span, buffer_span)
+-- Exactly the columns of spec §04 §7 (no organization_priest_id, note or created_by).
+GRANT SELECT (id, org_id, priest_profile_id, booking_id, kind, status, span, buffer_span)
   ON app.calendar_reservations TO app_freebusy;
 GRANT SELECT (id, org_id, priest_profile_id) ON app.organization_priests TO app_freebusy;
 

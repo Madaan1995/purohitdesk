@@ -723,7 +723,7 @@ Every tenant table that other tenant tables reference has `UNIQUE (id, org_id)`,
 | `app_domain` | no | command functions | the specific INSERT/UPDATE/DELETE each command needs, through RLS scoped to the current tenant | see other tenants; bypass RLS |
 | `app_authz` | no | `current_member_role`, `current_member_has`, `is_active_member_of`, `current_priest_profile_id`, `assert_permission` | read only the actor's membership rows | anything else |
 | `app_bootstrap` | no | `ensure_current_user`, `bootstrap_practice` | insert rows owned by the actor (`linked_via = 'BOOTSTRAP'`) | link other people; touch existing organizations |
-| `app_freebusy` | no | `_priest_conflicts`, `priest_busy` | column-level SELECT on `id, org_id, priest_profile_id, booking_id, kind, status, span, buffer_span` of ACTIVE reservations in any org (no notes, creators); its two functions first verify the priest is linked to the caller's org and return other orgs' spans without ids | read bookings, customers, or anything else |
+| `app_freebusy` | no | `_priest_conflicts`, `priest_busy` | column-level SELECT on `id, org_id, priest_profile_id, booking_id, kind, status, span, buffer_span` of ACTIVE reservations in any org, **only of priest profiles linked to `current_tenant_id()`** and only while the actor is an ACTIVE member there (RLS policy `calendar_reservations_freebusy_read`; no notes, creators or priest-link ids; founder review, 2 Nov 2026); its two functions first verify the priest is linked to the caller's org and return other orgs' spans without ids | read bookings, customers, or anything else |
 | `app_maintenance` | no | `run_retention` | purge transcripts, time out stuck voice jobs, delete expired idempotency keys and old audit rows | anything else; it is executable only by the migration owner (Supabase Cron) |
 | `app_operator` (founder review, 29 Oct 2026) | no | `ops_add_member`, `ops_revoke_member` | add, re-role or revoke a non-owner membership (its policies admit no OWNER row); read organization ids/names/status and app user ids/status | anything else; executable only by the migration owner (operator scripts in `supabase/ops/`) |
 
@@ -741,7 +741,7 @@ The sub-selects make PostgreSQL evaluate each helper once per statement (InitPla
 
 | Table group | `app_runtime` | `app_domain` | Others |
 | --- | --- | --- | --- |
-| Tenant tables | SELECT where T | ALL where T | `app_freebusy` SELECT ACTIVE reservations (any org; only reachable through its two functions, which check the link and strip ids); `app_maintenance` retention rows only |
+| Tenant tables | SELECT where T | ALL where T | `app_freebusy` SELECT ACTIVE reservations (any org, but only of priest profiles linked to the current tenant, enforced by RLS; only reachable through its two functions, which also check the link and strip ids); `app_maintenance` retention rows only |
 | `voice_extractions` | SELECT own rows (`requested_by = actor`) where T | ALL where T | `app_maintenance` rows older than 10 minutes |
 | `audit_log` | SELECT where T and `AUDIT_READ` | INSERT where T | `app_maintenance` DELETE > 12 months |
 | `organizations` | SELECT where active member | UPDATE where T | `app_bootstrap` INSERT (created_by = actor) |
@@ -817,7 +817,7 @@ Editing rules (`update_booking`): while DRAFT every field may change (title, cus
 4. The constraint cannot be bypassed: the API role cannot write tables; every BOOKING reservation is inserted by `_reserve_booking`, every BLOCK by `create_block` (same per-priest advisory lock, no buffer check); there is no override flag.
 5. The deferred invariant triggers make it impossible to commit a CONFIRMED/COMPLETED booking without covering reservations for every assigned priest, or a DRAFT/CANCELLED booking that still holds one (PD500).
 
-Concurrency (EXECUTED, `concurrency.sh`): two sessions confirming the same priest at overlapping times in **different organizations** — the second waits (~1.2 s in the harness, which holds the first transaction open) and then fails with `BOOKING_CONFLICT`; if the first rolls back, the second commits. Run 3 times, plus a rollback variant, a buffer-only race and an idempotency race; zero overlapping ACTIVE reservations remain.
+Concurrency (EXECUTED, `concurrency.sh`): two sessions confirming the same priest at overlapping times in **different organizations** — the second waits (~1.2 s in the harness, which holds the first transaction open) and then fails with `BOOKING_CONFLICT`; if the first rolls back, the second commits. Run 3 times, plus a rollback variant, a buffer-only race and an idempotency race; reschedule vs confirm in both directions (a refused reschedule keeps its original slot), reschedule into a buffer-only overlap, and multi-priest bookings with overlapping priest sets (staggered, five simultaneous starts, and a lock-order probe: a session waiting on the lower profile's lock does not hold the higher one, so opposite list orders cannot deadlock); zero overlapping ACTIVE reservations remain.
 
 ## 3. Reservation algorithm (`_reserve_booking`)
 

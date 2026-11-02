@@ -18,6 +18,11 @@ OA=c0000000-0000-0000-0000-0000000000aa
 OB=c0000000-0000-0000-0000-0000000000bb
 LA=c0000000-0000-0000-0000-0000000000e1
 LB=c0000000-0000-0000-0000-0000000000e2
+PP=c0000000-0000-0000-0000-0000000000f1
+UQ=c0000000-0000-0000-0000-000000000003
+PQ=c0000000-0000-0000-0000-0000000000f3
+LQA=c0000000-0000-0000-0000-0000000000e3
+LQB=c0000000-0000-0000-0000-0000000000e4
 
 psql -X -q -v ON_ERROR_STOP=1 -d "$DB" <<SQL
 INSERT INTO auth.users (id, email) VALUES ('$UA', 'race-a@example.test'), ('$UB', 'race-b@example.test');
@@ -31,6 +36,12 @@ INSERT INTO app.priest_profiles (id, user_id, display_name)
 INSERT INTO app.organization_priests (id, org_id, priest_profile_id, linked_via) VALUES
   ('$LA', '$OA', 'c0000000-0000-0000-0000-0000000000f1', 'BOOTSTRAP'),
   ('$LB', '$OB', 'c0000000-0000-0000-0000-0000000000f1', 'INVITATION');
+-- A second human Q, also serving both practices (multi-priest races).
+INSERT INTO auth.users (id, email) VALUES ('$UQ', 'race-q@example.test');
+INSERT INTO app.app_users (id, auth_user_id) VALUES ('$UQ', '$UQ');
+INSERT INTO app.priest_profiles (id, user_id, display_name) VALUES ('$PQ', '$UQ', 'Race Pandit Q');
+INSERT INTO app.organization_priests (id, org_id, priest_profile_id, linked_via) VALUES
+  ('$LQA', '$OA', '$PQ', 'INVITATION'), ('$LQB', '$OB', '$PQ', 'INVITATION');
 INSERT INTO app.customers (id, org_id, display_name) VALUES
   ('c0000000-0000-0000-0000-0000000000c1', '$OA', 'Race Customer A'),
   ('c0000000-0000-0000-0000-0000000000c2', '$OB', 'Race Customer B');
@@ -39,12 +50,13 @@ INSERT INTO app.offerings (id, org_id, name_hi, name_en, duration_min) VALUES
   ('c0000000-0000-0000-0000-0000000000d2', '$OB', 'हवन', 'Havan', 60);
 SQL
 
-# fields <practice A|B> <start> <end> [extra json]: create_booking fields for P in that practice.
+# fields <practice A|B> <start> <end> [extra json] [priest_ids json]: create_booking fields for that practice
+# (default priest: P's link there).
 fields() {
-  local c=c0000000-0000-0000-0000-0000000000c1 o=c0000000-0000-0000-0000-0000000000d1 l=$LA
-  if [ "$1" = B ]; then c=c0000000-0000-0000-0000-0000000000c2; o=c0000000-0000-0000-0000-0000000000d2; l=$LB; fi
+  local c=c0000000-0000-0000-0000-0000000000c1 o=c0000000-0000-0000-0000-0000000000d1 l="[\"$LA\"]"
+  if [ "$1" = B ]; then c=c0000000-0000-0000-0000-0000000000c2; o=c0000000-0000-0000-0000-0000000000d2; l="[\"$LB\"]"; fi
   echo "{\"customer_id\": \"$c\", \"offering_id\": \"$o\", \"starts_at\": \"$2\", \"ends_at\": \"$3\",
-         \"buffer_before_min\": 0, \"buffer_after_min\": 0, \"priest_ids\": [\"$l\"]${4:-}}"
+         \"buffer_before_min\": 0, \"buffer_after_min\": 0, \"priest_ids\": ${5:-$l}${4:-}}"
 }
 
 # session <actor> <tenant> <sql> <hold seconds> <COMMIT|ROLLBACK>: prints the query result or the error.
@@ -107,6 +119,94 @@ DUP="SELECT app.create_booking('$(fields A "2028-01-06T04:30:00Z" "2028-01-06T05
   false, false, 'race-dup-key', repeat('b', 64)) ->> 'idempotent_replay';"
 race "same Idempotency-Key sent twice concurrently -> one booking, one replay" "$DUP" COMMIT "$UA" "$OA" "$DUP" '^true$'
 
+# ---------------------------------------------------------------- M7: reschedule races
+# confirmed <actor> <tenant> <fields> <key>: commits a confirmed booking, prints its id.
+confirmed() { session "$1" "$2" "$(printf "$CONFIRM_ID" "$3" "$4")" 0 COMMIT; }
+CONFIRM_ID="SELECT app.create_booking('%s', true, false, '%s', repeat('a', 64)) -> 'booking' ->> 'id';"
+# reschedule sql: <booking id> <changes json> <key>; the expected version is read in the same transaction.
+RESCHED="SELECT app.reschedule_booking('%s', (SELECT version FROM app.bookings WHERE id = '%s'), '%s',
+  'CUSTOMER_REQUEST', false, '%s', repeat('a', 64)) -> 'booking' ->> 'status';"
+resched() { printf "$RESCHED" "$1" "$1" "$2" "$3"; }
+# slot_kept <booking id> <start> <end>: the booking is still CONFIRMED at that time and holds exactly that ACTIVE span.
+slot_kept() {
+  psql -X -At -d "$DB" -c "
+    SELECT b.status = 'CONFIRMED' AND b.starts_at = '$2' AND b.ends_at = '$3'
+       AND (SELECT count(*) FROM app.calendar_reservations r WHERE r.booking_id = b.id AND r.status = 'ACTIVE'
+              AND r.span = tstzrange('$2', '$3', '[)')) = 1
+       AND (SELECT count(*) FROM app.calendar_reservations r WHERE r.booking_id = b.id AND r.status = 'ACTIVE') = 1
+    FROM app.bookings b WHERE b.id = '$1'"
+}
+
+X="$(confirmed "$UA" "$OA" "$(fields A "2028-02-01T01:00:00Z" "2028-02-01T02:00:00Z")" race-pre-x)"
+race "reschedule (A) holds the slot -> concurrent confirm (B) waits, then BOOKING_CONFLICT" \
+  "$(resched "$X" '{"starts_at": "2028-02-01T04:30:00Z", "ends_at": "2028-02-01T06:30:00Z"}' race-x-move)" COMMIT \
+  "$UB" "$OB" "$(printf "$CONFIRM" "$(fields B "2028-02-01T05:30:00Z" "2028-02-01T07:00:00Z")" race-b-x)" \
+  'ERROR:  BOOKING_CONFLICT'
+[ "$(slot_kept "$X" 2028-02-01T04:30:00Z 2028-02-01T06:30:00Z)" = t ]
+check "the rescheduled booking holds only its new slot" $? "booking=$X"
+
+Z="$(confirmed "$UB" "$OB" "$(fields B "2028-02-02T01:00:00Z" "2028-02-02T02:00:00Z")" race-pre-z)"
+race "confirm (A) holds the slot -> concurrent reschedule (B) into it waits, then BOOKING_CONFLICT" \
+  "$(printf "$CONFIRM" "$(fields A "2028-02-02T04:30:00Z" "2028-02-02T06:30:00Z")" race-a-z)" COMMIT \
+  "$UB" "$OB" "$(resched "$Z" '{"starts_at": "2028-02-02T05:30:00Z", "ends_at": "2028-02-02T07:00:00Z"}' race-z-move)" \
+  'ERROR:  BOOKING_CONFLICT'
+[ "$(slot_kept "$Z" 2028-02-02T01:00:00Z 2028-02-02T02:00:00Z)" = t ]
+check "the refused reschedule left its booking and original slot untouched" $? "booking=$Z"
+
+W="$(confirmed "$UB" "$OB" "$(fields B "2028-02-03T01:00:00Z" "2028-02-03T02:00:00Z" "$BUF")" race-pre-w)"
+race "reschedule (B) into a buffer-only overlap with a concurrent confirm (A) waits, then BUFFER_CONFLICT" \
+  "$(printf "$CONFIRM" "$(fields A "2028-02-03T04:30:00Z" "2028-02-03T05:30:00Z" "$BUF")" race-a-w)" COMMIT \
+  "$UB" "$OB" "$(resched "$W" '{"starts_at": "2028-02-03T05:45:00Z", "ends_at": "2028-02-03T06:30:00Z"}' race-w-move)" \
+  'ERROR:  BUFFER_CONFLICT'
+[ "$(slot_kept "$W" 2028-02-03T01:00:00Z 2028-02-03T02:00:00Z)" = t ]
+check "the buffer-refused reschedule left its booking and original slot untouched" $? "booking=$W"
+
+# ---------------------------------------------------------------- M7: multi-priest bookings, overlapping priest sets
+# P and Q serve both practices. A lists [P, Q], B lists [Q, P]: the per-priest locks are taken in profile order
+# whatever the list order, so the two transactions never deadlock.
+race "multi-priest [P,Q] (A) vs [Q,P] (B), overlapping: second waits, then BOOKING_CONFLICT (no deadlock)" \
+  "$(printf "$CONFIRM" "$(fields A "2028-02-04T04:30:00Z" "2028-02-04T06:30:00Z" "" "[\"$LA\", \"$LQA\"]")" race-mp-a)" COMMIT \
+  "$UB" "$OB" "$(printf "$CONFIRM" "$(fields B "2028-02-04T05:30:00Z" "2028-02-04T07:00:00Z" "" "[\"$LQB\", \"$LB\"]")" race-mp-b)" \
+  'ERROR:  BOOKING_CONFLICT'
+
+# Both sessions start at the same moment, five times: exactly one confirms, the other gets BOOKING_CONFLICT, never a
+# deadlock (40P01).
+for run in 1 2 3 4 5; do
+  d="2028-02-1${run}"
+  o1="$(mktemp)"; o2="$(mktemp)"
+  session "$UA" "$OA" "$(printf "$CONFIRM" "$(fields A "${d}T04:30:00Z" "${d}T06:30:00Z" "" "[\"$LA\", \"$LQA\"]")" "race-sim-a-$run")" 0 COMMIT > "$o1" &
+  session "$UB" "$OB" "$(printf "$CONFIRM" "$(fields B "${d}T05:00:00Z" "${d}T07:00:00Z" "" "[\"$LQB\", \"$LB\"]")" "race-sim-b-$run")" 0 COMMIT > "$o2" &
+  wait
+  ok1=$(grep -c '^CONFIRMED$' "$o1" "$o2" | awk -F: '{s += $2} END {print s}')
+  bad=$(cat "$o1" "$o2" | grep -c 'deadlock' || true)
+  conf=$(cat "$o1" "$o2" | grep -c 'ERROR:  BOOKING_CONFLICT' || true)
+  [ "$ok1" = 1 ] && [ "$conf" = 1 ] && [ "$bad" = 0 ]
+  check "multi-priest [P,Q] vs [Q,P] started together, run $run: one CONFIRMED, one BOOKING_CONFLICT, no deadlock" $? \
+    "confirmed=$ok1 conflicts=$conf deadlocks=$bad"
+  rm -f "$o1" "$o2"
+done
+
+# Lock order, deterministically: a third session holds the lower profile's lock; B confirms [Q, P] (higher profile
+# listed first). B must wait on the lower lock WITHOUT holding the higher one, so a probe can still take it.
+read -r LOW HIGH <<<"$(printf '%s\n%s\n' "$PP" "$PQ" | sort | tr '\n' ' ')"
+lock_sql() { echo "SELECT pg_advisory_xact_lock(hashtextextended('priest:' || '$1', 0));"; }
+holder="$(mktemp)"; waiter="$(mktemp)"
+psql -X -q -At -d "$DB" > "$holder" 2>&1 <<SQL &
+BEGIN;
+$(lock_sql "$LOW") \g /dev/null
+SELECT pg_sleep(2) \g /dev/null
+COMMIT;
+SQL
+sleep 0.3
+session "$UB" "$OB" "$(printf "$CONFIRM" "$(fields B "2028-02-20T04:30:00Z" "2028-02-20T05:30:00Z" "" "[\"$LQB\", \"$LB\"]")" race-order)" 0 COMMIT > "$waiter" &
+sleep 0.7
+probe="$(psql -X -q -At -d "$DB" -c "SELECT pg_try_advisory_xact_lock(hashtextextended('priest:' || '$HIGH', 0))")"
+wait
+[ "$probe" = t ] && grep -q '^CONFIRMED$' "$waiter"
+check "per-priest locks are taken in profile order: a waiter on the lower lock does not hold the higher one" $? \
+  "probe higher lock free=$probe | waiter: $(head -c 60 "$waiter")"
+rm -f "$holder" "$waiter"
+
 count="$(psql -X -At -d "$DB" -c "SELECT count(*) FROM app.bookings WHERE title = 'dup race'")"
 [ "$count" = 1 ]
 check "exactly one 'dup race' booking stored" $? "count=$count"
@@ -118,11 +218,17 @@ overlaps="$(psql -X -At -d "$DB" -c "
 [ "$overlaps" = 0 ]
 check "zero overlapping ACTIVE reservations in the whole database" $? "overlaps=$overlaps"
 
+bad="$(psql -X -At -d "$DB" -c "
+  SELECT count(*) FROM app.bookings b
+  WHERE b.org_id IN ('$OA', '$OB')
+    AND (SELECT count(*) FROM app.calendar_reservations r WHERE r.booking_id = b.id AND r.status = 'ACTIVE')
+        <> CASE WHEN b.status IN ('CONFIRMED', 'COMPLETED')
+                THEN (SELECT count(*) FROM app.booking_assignments a WHERE a.booking_id = b.id) ELSE 0 END")"
 confirmed="$(psql -X -At -d "$DB" -c "
-  SELECT count(*) FROM app.bookings b JOIN app.calendar_reservations r ON r.booking_id = b.id AND r.status = 'ACTIVE'
-  WHERE b.org_id IN ('$OA', '$OB') AND b.status = 'CONFIRMED'")"
-[ "$confirmed" = 5 ]
-check "five confirmed race bookings hold exactly one ACTIVE reservation each" $? "confirmed=$confirmed"
+  SELECT count(*) FROM app.bookings b WHERE b.org_id IN ('$OA', '$OB') AND b.status = 'CONFIRMED'")"
+[ "$bad" = 0 ] && [ "$confirmed" = 17 ]
+check "17 confirmed race bookings, each holding exactly one ACTIVE reservation per assigned priest" $? \
+  "confirmed=$confirmed mismatched=$bad"
 
 echo "concurrency: $((n - fails)) passed, $fails failed"
 [ "$fails" -eq 0 ]

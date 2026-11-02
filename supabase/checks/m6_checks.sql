@@ -155,6 +155,8 @@ checks (n, check_name, ok) AS (
   (9, 'app_freebusy reads only busy-time columns of reservations, and no booking or customer',
     NOT pg_catalog.has_column_privilege('app_freebusy', 'app.calendar_reservations', 'note', 'SELECT')
     AND NOT pg_catalog.has_column_privilege('app_freebusy', 'app.calendar_reservations', 'created_by', 'SELECT')
+    AND NOT pg_catalog.has_column_privilege('app_freebusy', 'app.calendar_reservations', 'organization_priest_id',
+                                            'SELECT')
     AND pg_catalog.has_column_privilege('app_freebusy', 'app.calendar_reservations', 'span', 'SELECT')
     AND NOT pg_catalog.has_any_column_privilege('app_freebusy', 'app.bookings', 'SELECT')
     AND NOT pg_catalog.has_any_column_privilege('app_freebusy', 'app.customers', 'SELECT')

@@ -17,6 +17,12 @@ GRANT USAGE ON SCHEMA auth TO pd_migrator;
 GRANT SELECT ON auth.users TO pd_migrator WITH GRANT OPTION;
 GRANT REFERENCES ON auth.users TO pd_migrator;
 
+-- Supabase's `extensions` schema: it exists before any migration, and postgres may create (trusted) extensions in it.
+-- The M6 migration then takes its `WITH SCHEMA extensions` branch for btree_gist, as on staging. On Supabase the API
+-- roles have USAGE on it (the schema's exact owner and grants on staging were not probed).
+CREATE SCHEMA extensions;
+GRANT USAGE, CREATE ON SCHEMA extensions TO pd_migrator;
+
 -- Supabase API roles, with a worst-case default: everything pd_migrator creates is granted to them.
 -- The migrations must revoke it (the Data API stays off for schema app).
 CREATE ROLE anon NOLOGIN;
@@ -26,3 +32,4 @@ ALTER DEFAULT PRIVILEGES FOR ROLE pd_migrator GRANT ALL ON TABLES TO anon, authe
 ALTER DEFAULT PRIVILEGES FOR ROLE pd_migrator GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES FOR ROLE pd_migrator GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES FOR ROLE pd_migrator GRANT ALL ON SCHEMAS TO anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role;
