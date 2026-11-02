@@ -17,14 +17,20 @@ checks (n, check_name, ok) AS (
     (SELECT count(*) FROM f WHERE pg_catalog.has_function_privilege('app_runtime', oid, 'EXECUTE')) = 3
     AND NOT pg_catalog.has_function_privilege('app_runtime', 'app._priest_conflicts(uuid,tstzrange,tstzrange,uuid)',
                                               'EXECUTE')),
-  (4, 'app_freebusy still cannot read reservation notes or creators',
+  (4, 'app_freebusy still cannot read reservation notes, creators or priest-link ids',
     NOT pg_catalog.has_column_privilege('app_freebusy', 'app.calendar_reservations', 'note', 'SELECT')
-    AND NOT pg_catalog.has_column_privilege('app_freebusy', 'app.calendar_reservations', 'created_by', 'SELECT')),
+    AND NOT pg_catalog.has_column_privilege('app_freebusy', 'app.calendar_reservations', 'created_by', 'SELECT')
+    AND NOT pg_catalog.has_column_privilege('app_freebusy', 'app.calendar_reservations', 'organization_priest_id',
+                                            'SELECT')),
   (5, 'no app function is executable by PUBLIC',
     NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
                 WHERE p.pronamespace = 'app'::regnamespace
                   AND (p.proacl IS NULL OR EXISTS (SELECT 1 FROM pg_catalog.aclexplode(p.proacl) a
-                                                   WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'))))
+                                                   WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE')))),
+  (6, 'audit_log accepts BLOCK_RELEASED (action CHECK widened by the M8 migration)',
+    EXISTS (SELECT 1 FROM pg_catalog.pg_constraint con
+            WHERE con.conrelid = 'app.audit_log'::regclass AND con.conname = 'audit_log_action_check'
+              AND pg_catalog.pg_get_constraintdef(con.oid) LIKE '%BLOCK_RELEASED%'))
 )
 SELECT n, check_name AS "check", CASE WHEN ok THEN 'PASS' ELSE 'FAIL' END AS result
 FROM checks ORDER BY n;

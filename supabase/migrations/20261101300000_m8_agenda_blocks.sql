@@ -1,10 +1,57 @@
 -- M8 agenda, availability and calendar blocks: priest_busy (owner app_freebusy), create_block and release_block
--- (owner app_domain); conflict details name same-practice blocks. No new tables: blocks are calendar_reservations
--- rows of kind BLOCK (M6).
+-- (owner app_domain); conflict details name same-practice blocks; _priest_conflicts also sees blocks when no booking
+-- is excluded; audit_log gains BLOCK_RELEASED. No new tables: blocks are calendar_reservations rows of kind BLOCK (M6).
 -- Spec: docs/spec.md ADR-006, §04 §7, §05 §2/§4/§8, §08 §3, §11 §2/§5. Proposal: docs/proposals/m8.md.
 
 -- The migration user is a member of the function-owning roles only until the end of this file (spec U1).
 GRANT app_authz, app_bootstrap, app_domain, app_operator, app_freebusy TO CURRENT_USER;
+
+-- ---------------------------------------------------------------------------
+-- _priest_conflicts (owner app_freebusy, M6): M6's filter `booking_id IS DISTINCT FROM p_exclude_booking` dropped
+-- every BLOCK row (booking_id NULL) when p_exclude_booking is NULL, which is how create_block calls it, so a block over
+-- a block reached the exclusion constraint instead of BOOKING_CONFLICT with details. Exclude only the given booking.
+-- CREATE OR REPLACE keeps the owner (app_freebusy) and the EXECUTE grant (app_domain only).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION app._priest_conflicts(
+  p_priest_profile_id uuid, p_span tstzrange, p_buffer_span tstzrange, p_exclude_booking uuid
+) RETURNS TABLE (conflict text, reservation_kind text, starts_at timestamptz, ends_at timestamptz,
+                 same_org boolean, booking_id uuid)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path = ''
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_tenant uuid := app.current_tenant_id();
+BEGIN
+  IF app.current_actor_id() IS NULL OR v_tenant IS NULL THEN
+    PERFORM app.raise_error('PD401', 'CONTEXT_MISSING');
+  END IF;
+  IF app.current_member_role() IS NULL THEN
+    PERFORM app.raise_error('PD404', 'NOT_FOUND', '{"resource": "organization"}');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM app.organization_priests op
+                 WHERE op.org_id = v_tenant AND op.priest_profile_id = p_priest_profile_id) THEN
+    PERFORM app.raise_error('PD404', 'NOT_FOUND', '{"resource": "priest"}');
+  END IF;
+  RETURN QUERY
+  SELECT CASE WHEN r.span && p_span THEN 'CEREMONY' ELSE 'BUFFER' END,
+         r.kind, lower(r.span), upper(r.span), r.org_id = v_tenant,
+         CASE WHEN r.org_id = v_tenant THEN r.booking_id END
+  FROM app.calendar_reservations r
+  WHERE r.priest_profile_id = p_priest_profile_id AND r.status = 'ACTIVE'
+    AND (p_exclude_booking IS NULL OR r.booking_id IS DISTINCT FROM p_exclude_booking)
+    AND (r.span && p_buffer_span OR r.buffer_span && p_span)
+  ORDER BY lower(r.span);
+END
+$$;
+
+-- ---------------------------------------------------------------------------
+-- audit_log (M5 table): releasing a block is audited too (founder review, 2 Nov 2026). M5 is applied and is not
+-- edited; the action CHECK is widened here.
+-- ---------------------------------------------------------------------------
+ALTER TABLE app.audit_log DROP CONSTRAINT audit_log_action_check;
+ALTER TABLE app.audit_log ADD CONSTRAINT audit_log_action_check
+  CHECK (action IN ('ORG_UPDATED', 'BLOCK_CREATED', 'BLOCK_RELEASED', 'CUSTOMER_ERASED', 'EXPORT'));
 
 -- ---------------------------------------------------------------------------
 -- priest_busy (owner app_freebusy): the busy time of one priest of this practice, in every practice he serves.
@@ -74,7 +121,7 @@ AS $$
   SELECT jsonb_build_object(
     'id', r.id, 'organization_priest_id', r.organization_priest_id, 'starts_at', lower(r.span),
     'ends_at', upper(r.span), 'note', r.note, 'status', r.status, 'created_at', r.created_at,
-    'released_at', r.released_at)
+    'released_at', r.released_at, 'released_by', r.released_by)
 $$;
 
 CREATE FUNCTION app.create_block(
@@ -171,6 +218,9 @@ BEGIN
   SET status = 'RELEASED', released_at = now(), released_by = app.current_actor_id()
   WHERE r.id = v_r.id
   RETURNING * INTO v_r;
+  -- Audit: ids and times only, never the note (golden rule 8).
+  PERFORM app._audit('BLOCK_RELEASED', v_r.id, jsonb_build_object(
+    'organization_priest_id', v_r.organization_priest_id, 'starts_at', lower(v_r.span), 'ends_at', upper(v_r.span)));
   RETURN app._idem_finish(p_idem_key, jsonb_build_object('block', app._block_out(v_r)));
 END
 $$;

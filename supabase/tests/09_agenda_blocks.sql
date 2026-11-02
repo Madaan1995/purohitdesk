@@ -108,7 +108,22 @@ SELECT test.throws(format('SELECT test.block(%L, %L, %L, %L)', :'la', '2027-09-0
 SELECT test.throws(format('SELECT test.block(%L, %L, %L)', :'lab', '2027-09-03T05:00:00Z', '2027-09-03T06:00:00Z'),
   'PD404', 'another practice''s priest link is not found', 'NOT_FOUND');
 
-SELECT test.is(test.release(:'b1id') ->> 'status', 'RELEASED', 'release a block');
+SELECT test.release(:'b1id') AS rel1 \gset
+SELECT test.is(:'rel1'::jsonb ->> 'status', 'RELEASED', 'release a block');
+SELECT test.is(:'rel1'::jsonb ->> 'released_by', 'a9000000-0000-0000-0000-000000000001',
+  'the released block says who released it (released_by)');
+RESET ROLE;
+SELECT test.is((SELECT jsonb_build_object('actor', actor_user_id, 'data', data) FROM app.audit_log
+                WHERE action = 'BLOCK_RELEASED' AND target_id = :'b1id'),
+  '{"actor": "a9000000-0000-0000-0000-000000000001", "data": {"organization_priest_id":
+    "a9000000-0000-0000-0000-0000000000e1", "starts_at": "2027-09-01T08:30:00+00:00",
+    "ends_at": "2027-09-01T10:30:00+00:00"}}'::jsonb, 'BLOCK_RELEASED audit: actor, ids and times, never the note');
+SELECT test.ok(NOT EXISTS (SELECT 1 FROM app.audit_log a, jsonb_each(a.data) d
+                           WHERE a.action IN ('BLOCK_CREATED', 'BLOCK_RELEASED')
+                             AND d.key NOT IN ('organization_priest_id', 'starts_at', 'ends_at')),
+  'block audit rows hold only the priest link id and the times');
+SET ROLE app_runtime;
+SELECT test.ctx('a9000000-0000-0000-0000-000000000001', 'a9000000-0000-0000-0000-0000000000aa');
 SELECT test.is((SELECT status || ' ' || (released_at IS NOT NULL)::text FROM app.calendar_reservations WHERE id = :'b1id'),
   'RELEASED true', 'the released block stays as history');
 SELECT test.is(test.tb('2027-09-01T09:00:00Z', '2027-09-01T09:30:00Z', '{"buffer_before_min": 0, "buffer_after_min": 0}')
@@ -120,6 +135,42 @@ SELECT app.create_block(:'la', '2027-09-05T04:30:00Z', '2027-09-05T05:30:00Z', N
 SELECT app.create_block(:'la', '2027-09-05T04:30:00Z', '2027-09-05T05:30:00Z', NULL, 'block-key-01', repeat('b', 64)) AS r2 \gset
 SELECT test.ok((:'r2'::jsonb ->> 'idempotent_replay')::boolean
   AND (:'r2'::jsonb -> 'block' ->> 'id') = (:'r1'::jsonb -> 'block' ->> 'id'), 'a retried block replays the first one');
+
+-- Block over block (r1 = 04:30-05:30 on 5 Sep): BOOKING_CONFLICT with details, never the bare exclusion constraint.
+DO $$
+DECLARE v_detail text; v_msg text;
+BEGIN
+  PERFORM test.block('a9000000-0000-0000-0000-0000000000e1', '2027-09-05T05:00:00Z', '2027-09-05T06:00:00Z');
+  PERFORM test.ok(false, 'a block over the practice''s own block is refused', 'no error raised');
+EXCEPTION WHEN exclusion_violation THEN
+  GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL, v_msg = MESSAGE_TEXT;
+  PERFORM test.is(v_msg, 'BOOKING_CONFLICT', 'a block over the practice''s own block is refused as BOOKING_CONFLICT');
+  PERFORM test.is(v_detail::jsonb -> 'conflicts',
+    '[{"organization_priest_id": "a9000000-0000-0000-0000-0000000000e1", "starts_at": "2027-09-05T04:30:00+00:00",
+       "ends_at": "2027-09-05T05:30:00+00:00", "same_org": true, "block": true}]'::jsonb,
+    'block over block: the conflict lists the existing block ("time is blocked")');
+END $$;
+SELECT test.is((SELECT count(*) FROM app.calendar_reservations
+                WHERE organization_priest_id = :'la' AND status = 'ACTIVE'
+                  AND span && tstzrange('2027-09-05T04:00:00Z', '2027-09-05T07:00:00Z')), 1::bigint,
+  'the refused block wrote nothing');
+SELECT test.lives(format('SELECT test.block(%L, %L, %L)', :'la', '2027-09-05T05:30:00Z', '2027-09-05T06:00:00Z'),
+  'a block may start exactly when another block ends');
+SELECT test.ctx('b9000000-0000-0000-0000-000000000001', 'b9000000-0000-0000-0000-0000000000bb');
+DO $$
+DECLARE v_detail text; v_msg text;
+BEGIN
+  PERFORM test.block('b9000000-0000-0000-0000-0000000000e3', '2027-09-05T05:00:00Z', '2027-09-05T05:15:00Z');
+  PERFORM test.ok(false, 'a block over another practice''s block is refused', 'no error raised');
+EXCEPTION WHEN exclusion_violation THEN
+  GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL, v_msg = MESSAGE_TEXT;
+  PERFORM test.is(v_msg, 'BOOKING_CONFLICT', 'a block over another practice''s block is refused as BOOKING_CONFLICT');
+  PERFORM test.is(v_detail::jsonb -> 'conflicts',
+    '[{"organization_priest_id": "b9000000-0000-0000-0000-0000000000e3", "starts_at": "2027-09-05T04:30:00+00:00",
+       "ends_at": "2027-09-05T05:30:00+00:00", "same_org": false}]'::jsonb,
+    'block over another practice''s block: busy time only, no block flag, no ids');
+END $$;
+SELECT test.ctx('a9000000-0000-0000-0000-000000000001', 'a9000000-0000-0000-0000-0000000000aa');
 
 -- ---------------------------------------------------------------- free/busy across practices
 SELECT test.ctx('b9000000-0000-0000-0000-000000000001', 'b9000000-0000-0000-0000-0000000000bb');
