@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: PurohitDesk API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Written per milestone (docs/plan.md). JSON, UTF-8, snake_case fields matching SQL columns.
     Every write calls exactly one PostgreSQL command (`x-db-function`); `x-permission` names the permission the
@@ -133,6 +133,33 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+    patch:
+      operationId: updateOrganization
+      summary: Rename the practice or change its time zone (IANA names only); audited as ORG_UPDATED
+      x-permission: ORG_SETTINGS
+      x-db-function: app.update_organization
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateOrganizationRequest' }
+      responses:
+        '200':
+          description: OK
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Organization' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /customers:
     get:
       operationId: listCustomers
@@ -238,6 +265,191 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /offerings:
+    get:
+      operationId: listOfferings
+      summary: The practice's offerings (active first)
+      x-permission: ORG_READ
+      x-db-function: none (SELECT under RLS)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Offering' } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createOffering
+      summary: Add an offering from the catalog (ceremony_type_id) or a custom one (both names and duration)
+      x-permission: CATALOG_WRITE
+      x-db-function: app.save_offering
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOfferingRequest' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/OfferingResult' } } } }
+        '200': { description: Replay, content: { application/json: { schema: { $ref: '#/components/schemas/OfferingResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /offerings/{offeringId}:
+    parameters:
+      - { name: offeringId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: updateOffering
+      summary: Change names, duration, suggested dakshina (paise) or active flag
+      x-permission: CATALOG_WRITE
+      x-db-function: app.save_offering
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateOfferingRequest' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/OfferingResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /samagri-templates:
+    get:
+      operationId: listSamagriTemplates
+      summary: Samagri lists (one per offering) with items in order
+      x-permission: ORG_READ
+      x-db-function: none (SELECT under RLS)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/SamagriTemplate' } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createSamagriTemplate
+      summary: Create the samagri list of an offering
+      x-permission: CATALOG_WRITE
+      x-db-function: app.save_samagri_template
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [offering_id, items]
+              properties:
+                offering_id: { type: string, format: uuid }
+                items: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/SamagriItemInput' } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SamagriTemplateResult' } } } }
+        '200': { description: Replay, content: { application/json: { schema: { $ref: '#/components/schemas/SamagriTemplateResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /samagri-templates/{templateId}:
+    parameters:
+      - { name: templateId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: replaceSamagriTemplate
+      summary: Replace all items of a samagri list (order = array order)
+      x-permission: CATALOG_WRITE
+      x-db-function: app.save_samagri_template
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [items]
+              properties:
+                items: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/SamagriItemInput' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SamagriTemplateResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /priests/{organizationPriestId}:
+    parameters:
+      - { name: organizationPriestId, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: updatePriestSettings
+      summary: Default travel buffers of a priest in this practice
+      x-permission: ORG_SETTINGS, or the priest himself
+      x-db-function: app.update_priest_settings
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                default_buffer_before_min: { type: integer, minimum: 0, maximum: 240 }
+                default_buffer_after_min: { type: integer, minimum: 0, maximum: 240 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [id, priest_profile_id, display_name, default_buffer_before_min, default_buffer_after_min, idempotent_replay]
+                properties:
+                  id: { type: string, format: uuid }
+                  priest_profile_id: { type: string, format: uuid }
+                  display_name: { type: string }
+                  default_buffer_before_min: { type: integer }
+                  default_buffer_after_min: { type: integer }
+                  idempotent_replay: { type: boolean }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
@@ -433,6 +645,88 @@ components:
         display_name: { type: string, minLength: 1, maxLength: 120 }
         phone: { type: [string, 'null'], maxLength: 32 }
         address: { type: [string, 'null'], maxLength: 500 }
+    UpdateOrganizationRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        timezone: { type: string, description: 'IANA Area/Location or UTC' }
+    Offering:
+      type: object
+      additionalProperties: false
+      required: [id, ceremony_type_id, name_hi, name_en, duration_min, suggested_dakshina_paise, is_active, version]
+      properties:
+        id: { type: string, format: uuid }
+        ceremony_type_id: { type: [string, 'null'], format: uuid }
+        name_hi: { type: string, maxLength: 120 }
+        name_en: { type: string, maxLength: 120 }
+        duration_min: { type: integer, minimum: 15, maximum: 1440 }
+        suggested_dakshina_paise: { type: [integer, 'null'], minimum: 0, maximum: 100000000000 }
+        is_active: { type: boolean }
+        version: { type: integer, minimum: 1 }
+    OfferingResult:
+      allOf:
+        - $ref: '#/components/schemas/Offering'
+        - type: object
+          required: [idempotent_replay]
+          properties:
+            idempotent_replay: { type: boolean }
+    CreateOfferingRequest:
+      type: object
+      additionalProperties: false
+      description: Either ceremony_type_id (names and duration default from the catalog) or name_hi + name_en + duration_min.
+      properties:
+        ceremony_type_id: { type: string, format: uuid }
+        name_hi: { type: string, minLength: 1, maxLength: 120 }
+        name_en: { type: string, minLength: 1, maxLength: 120 }
+        duration_min: { type: integer, minimum: 15, maximum: 1440 }
+        suggested_dakshina_paise: { type: [integer, 'null'], minimum: 0, maximum: 100000000000 }
+        is_active: { type: boolean }
+    UpdateOfferingRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name_hi: { type: string, minLength: 1, maxLength: 120 }
+        name_en: { type: string, minLength: 1, maxLength: 120 }
+        duration_min: { type: integer, minimum: 15, maximum: 1440 }
+        suggested_dakshina_paise: { type: [integer, 'null'], minimum: 0, maximum: 100000000000 }
+        is_active: { type: boolean }
+    SamagriItemInput:
+      type: object
+      additionalProperties: false
+      required: [name, provided_by]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        quantity: { type: [string, 'null'], maxLength: 60 }
+        provided_by: { type: string, enum: [FAMILY, PRIEST] }
+    SamagriTemplate:
+      type: object
+      additionalProperties: false
+      required: [id, offering_id, version, items]
+      properties:
+        id: { type: string, format: uuid }
+        offering_id: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [position, name, quantity, provided_by]
+            properties:
+              position: { type: integer, minimum: 1 }
+              name: { type: string }
+              quantity: { type: [string, 'null'] }
+              provided_by: { type: string, enum: [FAMILY, PRIEST] }
+    SamagriTemplateResult:
+      allOf:
+        - $ref: '#/components/schemas/SamagriTemplate'
+        - type: object
+          required: [idempotent_replay]
+          properties:
+            idempotent_replay: { type: boolean }
     ErrorEnvelope:
       type: object
       additionalProperties: false

@@ -9,7 +9,8 @@
     "switchPractice": "Switch practice",
     "addPractice": "Add another practice",
     "home": "Home",
-    "customers": "Customers"
+    "customers": "Customers",
+    "settings": "Settings"
   },
   "signIn": {
     "title": "Sign in",
@@ -106,5 +107,59 @@
     "duplicates": "Other customers with this phone number:",
     "duplicatesHint": "Both are saved — a household may share one phone.",
     "back": "All customers"
+  },
+  "settings": {
+    "title": "Settings",
+    "practice": "Practice",
+    "practiceName": "Practice name",
+    "timezone": "Time zone",
+    "timezoneHint": "For example Asia/Kolkata",
+    "buffers": "Travel time (minutes)",
+    "buffersHint": "Time kept free before and after each ceremony.",
+    "before": "Before",
+    "after": "After",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved.",
+    "offeringsLink": "Ceremonies and samagri lists",
+    "readOnly": "You do not have permission to change this."
+  },
+  "offerings": {
+    "title": "Ceremonies",
+    "addFromCatalog": "Add from the list",
+    "choose": "Choose a ceremony",
+    "add": "Add",
+    "addCustom": "Add your own ceremony",
+    "nameHi": "Name (Hindi)",
+    "nameEn": "Name (English)",
+    "duration": "Duration (minutes)",
+    "dakshina": "Suggested dakshina (₹, optional)",
+    "dakshinaHint": "For example 5,100",
+    "invalidDakshina": "This amount does not look right.",
+    "active": "Active",
+    "inactive": "Inactive",
+    "minutes": "{count} min",
+    "noDakshina": "No dakshina set",
+    "back": "All ceremonies",
+    "edit": "Ceremony details",
+    "none": "No ceremonies yet.",
+    "allAdded": "Every ceremony from the list is already added."
+  },
+  "samagri": {
+    "title": "Samagri list",
+    "hint": "What the family brings and what Pandit ji brings.",
+    "item": "Item",
+    "quantity": "Quantity",
+    "family": "Family",
+    "priest": "Pandit ji",
+    "providedBy": "Who brings it",
+    "moveUp": "Up",
+    "moveDown": "Down",
+    "remove": "Remove",
+    "addItem": "Add item",
+    "save": "Save list",
+    "saving": "Saving…",
+    "saved": "List saved.",
+    "empty": "The list is empty."
   }
 }

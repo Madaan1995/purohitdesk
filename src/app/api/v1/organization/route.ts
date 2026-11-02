@@ -1,8 +1,11 @@
 // GET /api/v1/organization — ORG_READ (every role); SELECT under RLS for the X-Tenant-ID organization.
+// PATCH — ORG_SETTINGS (app.update_organization); If-Match required.
 import { requireContext } from '@/app/_lib/context';
-import { json, route } from '@/app/_lib/http';
-import { DomainError, withTenantTx } from '@/db';
+import { etag, json, parseBody, parseIfMatch, route } from '@/app/_lib/http';
+import { requestHash } from '@/app/_lib/request-hash';
+import { command, DomainError, withTenantTx } from '@/db';
 import { apiError } from '@/domain/errors';
+import { UpdateOrganizationRequest } from '@/domain/schemas/catalog';
 
 export interface Organization {
   id: string;
@@ -25,4 +28,17 @@ export const GET = route(async (req: Request) => {
     return row;
   });
   return json(org, 200, { ETag: `"${org.version}"` });
+});
+
+export const PATCH = route(async (req: Request) => {
+  const ctx = await requireContext(req, { tenant: true, idempotency: true });
+  const version = parseIfMatch(req);
+  const body = await parseBody(req, UpdateOrganizationRequest);
+  const hash = requestHash('PATCH', '/organization', body);
+  const org = await withTenantTx(ctx, (tx) =>
+    command<Organization & { idempotent_replay: boolean }>(
+      tx`SELECT app.update_organization(${version}::int, ${tx.json(body)}::jsonb, ${ctx.idempotencyKey}, ${hash}) AS result`,
+    ),
+  );
+  return json(org, 200, etag(org.version));
 });

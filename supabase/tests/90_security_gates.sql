@@ -7,8 +7,11 @@ SELECT test.is((
   FROM pg_proc p
   WHERE p.pronamespace = 'app'::regnamespace AND has_function_privilege('app_runtime', p.oid, 'EXECUTE')),
   'app.bootstrap_practice(text,uuid[],text,text), app.create_customer(text,text,text,text,text), '
-  'app.current_actor_id(), app.current_member_role(), app.current_tenant_id(), app.ensure_current_user(text,text), '
-  'app.is_active_member_of(uuid), app.update_customer(uuid,integer,jsonb,text,text), app.update_my_profile(text,text)',
+  'app.current_actor_id(), app.current_member_has(text), app.current_member_role(), app.current_tenant_id(), '
+  'app.ensure_current_user(text,text), app.is_active_member_of(uuid), '
+  'app.save_offering(uuid,integer,jsonb,text,text), app.save_samagri_template(uuid,integer,uuid,jsonb,text,text), '
+  'app.update_customer(uuid,integer,jsonb,text,text), app.update_my_profile(text,text), '
+  'app.update_organization(integer,jsonb,text,text), app.update_priest_settings(uuid,integer,integer,text,text)',
   'every function app_runtime may EXECUTE is an endpoint command or used by its RLS policies');
 
 SELECT test.is((
@@ -18,8 +21,9 @@ SELECT test.is((
   'assert_permission=app_authz, bootstrap_practice=app_bootstrap, create_customer=app_domain, '
   'current_member_has=app_authz, current_member_role=app_authz, current_priest_profile_id=app_authz, '
   'ensure_current_user=app_bootstrap, is_active_member_of=app_authz, ops_add_member=app_operator, '
-  'ops_revoke_member=app_operator, update_customer=app_domain, '
-  'update_my_profile=app_domain',
+  'ops_revoke_member=app_operator, save_offering=app_domain, save_samagri_template=app_domain, '
+  'update_customer=app_domain, update_my_profile=app_domain, update_organization=app_domain, '
+  'update_priest_settings=app_domain',
   'SECURITY DEFINER functions and their NOLOGIN owners');
 
 SELECT test.ok(NOT EXISTS (
