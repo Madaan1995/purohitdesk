@@ -1,5 +1,8 @@
 // M8 integration: availability (free/busy across practices), calendar blocks, against the throwaway database.
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import en from '../../messages/en.json';
+import hi from '../../messages/hi.json';
+import { isBlockedTimeConflict } from '@/domain/booking';
 import { adminSql, createAuthUser, enabled, makeAuthConfig, request, tokenFor } from './helpers';
 
 const holder = vi.hoisted(() => ({ config: null as unknown }));
@@ -121,9 +124,40 @@ describe.skipIf(!enabled)('M8 agenda, availability and blocks against a throwawa
 
     const released = await release(first, b.id);
     expect(released.status).toBe(200);
-    expect((await released.json()).block.status).toBe('RELEASED');
+    const releasedBlock = (await released.json()).block;
+    expect(releasedBlock).toMatchObject({ status: 'RELEASED', released_by: expect.any(String), released_at: expect.any(String) });
+    const [audit] = await admin`SELECT actor_user_id, data FROM app.audit_log WHERE action = 'BLOCK_RELEASED' AND target_id = ${b.id}`;
+    expect(audit.actor_user_id).toBe(releasedBlock.released_by);
+    expect(audit.data).toEqual({ organization_priest_id: first.link, starts_at: '2027-10-06T08:30:00+00:00', ends_at: '2027-10-06T10:30:00+00:00' });
+    expect(JSON.stringify(audit.data)).not.toContain('Family');
     expect((await release(first, b.id)).status).toBe(409);
     expect((await send()).status).toBe(200);
+  });
+
+  it('a block over a block is a 409 BOOKING_CONFLICT listing the existing block ("time is blocked")', async () => {
+    const existing = await addBlock(first, { priest_id: first.link, starts_at: '2027-10-10T04:30:00Z', ends_at: '2027-10-10T06:30:00Z', note: 'Yatra' });
+    expect(existing.status).toBe(201);
+    const over = await addBlock(first, { priest_id: first.link, starts_at: '2027-10-10T05:00:00Z', ends_at: '2027-10-10T07:00:00Z' });
+    expect(over.status).toBe(409);
+    const { error } = await over.json();
+    expect(error.code).toBe('BOOKING_CONFLICT');
+    expect(error.details.conflicts).toEqual([
+      { organization_priest_id: first.link, starts_at: '2027-10-10T04:30:00+00:00', ends_at: '2027-10-10T06:30:00+00:00', same_org: true, block: true },
+    ]);
+    // The form shows bookings.blockedTime for exactly this response.
+    expect(isBlockedTimeConflict(error.details.conflicts)).toBe(true);
+    expect(hi.bookings.blockedTime).toBe('इस समय पंडित जी ने समय रोका हुआ है।');
+    expect(en.bookings.blockedTime).toBe('The priest has blocked this time.');
+
+    // The same human's block in the other practice: busy time only, no block flag, no ids, no note.
+    const foreign = await addBlock(second, { priest_id: second.link, starts_at: '2027-10-10T06:00:00Z', ends_at: '2027-10-10T06:15:00Z' });
+    expect(foreign.status).toBe(409);
+    const text = await foreign.text();
+    expect(text).not.toContain('Yatra');
+    expect(JSON.parse(text).error.details.conflicts).toEqual([
+      { organization_priest_id: second.link, starts_at: '2027-10-10T04:30:00+00:00', ends_at: '2027-10-10T06:30:00+00:00', same_org: false },
+    ]);
+    expect(isBlockedTimeConflict(JSON.parse(text).error.details.conflicts)).toBe(false);
   });
 
   it('a block in one practice keeps the same priest out in the other, anonymously', async () => {

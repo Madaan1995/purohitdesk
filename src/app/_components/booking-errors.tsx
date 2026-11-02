@@ -1,6 +1,6 @@
 'use client';
 
-import { travelGapMinutes, type BookingConflict } from '@/domain/booking';
+import { isBlockedTimeConflict, travelGapMinutes, type BookingConflict } from '@/domain/booking';
 import { formatLocalDate, localDateInZone, localTimeInZone } from '@/domain/time';
 import { useLocale, useTranslations } from 'next-intl';
 import type { WriteResult } from './api-client';
@@ -39,7 +39,7 @@ export function BookingError({ failure, timeZone, span, onAcknowledge, onDismiss
     (failure.reason && reasons[failure.reason]) ||
     (failure.code === 'VALIDATION_FAILED' && failure.field === 'reason' ? t('bookings.cancelReasonRequired') : null) ||
     t(`errors.${failure.code}` as 'errors.INTERNAL');
-  if (failure.code === 'BOOKING_CONFLICT' && conflicts.length > 0 && conflicts.every((c) => c.block)) {
+  if (failure.code === 'BOOKING_CONFLICT' && isBlockedTimeConflict(conflicts)) {
     message = t('bookings.blockedTime');
   }
   const asking = failure.code === 'BUFFER_CONFLICT' && onAcknowledge;

@@ -682,7 +682,7 @@ paths:
       - { name: blockId, in: path, required: true, schema: { type: string, format: uuid } }
     delete:
       operationId: releaseBlock
-      summary: Release a block (kept as RELEASED history); already released → 409 INVALID_TRANSITION
+      summary: Release a block (kept as RELEASED history with released_at/released_by; audited as BLOCK_RELEASED); already released → 409 INVALID_TRANSITION
       x-permission: BLOCK_MANAGE, or BLOCK_MANAGE_OWN for own calendar
       x-db-function: app.release_block
       parameters:
@@ -1159,7 +1159,7 @@ components:
     Block:
       type: object
       additionalProperties: false
-      required: [id, organization_priest_id, starts_at, ends_at, note, status, created_at, released_at]
+      required: [id, organization_priest_id, starts_at, ends_at, note, status, created_at, released_at, released_by]
       properties:
         id: { type: string, format: uuid }
         organization_priest_id: { type: string, format: uuid }
@@ -1169,6 +1169,7 @@ components:
         status: { type: string, enum: [ACTIVE, RELEASED] }
         created_at: { type: string, format: date-time }
         released_at: { type: [string, 'null'], format: date-time }
+        released_by: { type: [string, 'null'], format: uuid, description: app user who released the block }
     BlockResult:
       type: object
       additionalProperties: false

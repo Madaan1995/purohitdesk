@@ -13,6 +13,7 @@ export interface Block {
   status: 'ACTIVE' | 'RELEASED';
   created_at: string;
   released_at: string | null;
+  released_by: string | null;
 }
 
 export interface BusySpan {

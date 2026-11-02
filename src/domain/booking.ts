@@ -115,6 +115,14 @@ export const RESCHEDULE_REASON_CODES = [
 export type RescheduleReasonCode = (typeof RESCHEDULE_REASON_CODES)[number];
 
 /**
+ * A BOOKING_CONFLICT made only of the practice's own calendar blocks (`block: true`, M8): the UI says "the priest has
+ * blocked this time" instead of "another ceremony at this time".
+ */
+export function isBlockedTimeConflict(conflicts: readonly BookingConflict[]): boolean {
+  return conflicts.length > 0 && conflicts.every((c) => c.block === true);
+}
+
+/**
  * The shortest travel time, in whole minutes, between a ceremony [startsAt, endsAt) and the busy spans of a
  * BUFFER_CONFLICT ("only 15 minutes to travel"). 0 when a span touches the ceremony; null without spans.
  */
